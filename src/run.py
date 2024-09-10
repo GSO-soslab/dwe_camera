@@ -52,7 +52,8 @@ class ImagePublisher(object):
         dwe_camera.set(cv2.CAP_PROP_FPS, CAM_FPS)
         # (Optional) Disable auto exposure
         dwe_camera.set(cv2.CAP_PROP_AUTO_EXPOSURE, AUTO_EXPO)
-        dwe_camera.set(cv2.CAP_PROP_EXPOSURE, EXPO_TIME)
+        if AUTO_EXPO == 1:
+            dwe_camera.set(cv2.CAP_PROP_EXPOSURE, EXPO_TIME)
 
         self.expo_time = dwe_camera.get(cv2.CAP_PROP_EXPOSURE)
         self.CAM_FPS = dwe_camera.get(cv2.CAP_PROP_FPS)
@@ -70,9 +71,8 @@ class ImagePublisher(object):
     
     def exposure_callback(self, exposure_time):
         rospy.loginfo(f"Setting exposure time to: {exposure_time.data}")
-        self.expo_time = self.cam.get(cv2.CAP_PROP_EXPOSURE)
-        # self.expo_time = exposure_time.data
         self.cam.set(cv2.CAP_PROP_EXPOSURE, exposure_time.data)
+        self.expo_time = self.cam.get(cv2.CAP_PROP_EXPOSURE)
 
     def timer_callback(self, event):
         self.run()
