@@ -4,8 +4,6 @@ from cv_bridge import CvBridge
 from std_msgs.msg import Float32
 from sensor_msgs.msg import Image, CompressedImage, Illuminance
 
-import gc
-
 class ImagePublisher(object):
     def __init__(self):
         # publisher
@@ -13,7 +11,7 @@ class ImagePublisher(object):
         self.compressed_image_pub = rospy.Publisher("~image/compressed", CompressedImage, queue_size=10)
         self.exposure_time_pub = rospy.Publisher("~image/exposure_time", Illuminance, queue_size=10)
         # subscriber
-        self.exposure_time_sub = rospy.Subscriber("~exposure", Float32, self.exposure_callback)
+        self.exposure_time_sub = rospy.Subscriber("~set_exposure", Float32, self.exposure_callback )
 
         self.bridge = CvBridge()
         self.cam = self.cam_params()
@@ -38,12 +36,10 @@ class ImagePublisher(object):
         MJPG = cv2.VideoWriter_fourcc(*'MJPG')
         # frame rate
         CAM_FPS = rospy.get_param('~video/framerate', 15)
-        self.CAM_FPS = CAM_FPS
         # auto xposure
         AUTO_EXPO = rospy.get_param('~video/auto_exposure', 1)
         # exposure time
         EXPO_TIME = rospy.get_param('~video/exposure_time', 50)
-        self.expo_time = EXPO_TIME
 
         # -- DEVICE SETUP --
         dwe_camera = cv2.VideoCapture(CAM_IDX)
@@ -58,6 +54,9 @@ class ImagePublisher(object):
         dwe_camera.set(cv2.CAP_PROP_AUTO_EXPOSURE, AUTO_EXPO)
         dwe_camera.set(cv2.CAP_PROP_EXPOSURE, EXPO_TIME)
 
+        self.expo_time = dwe_camera.get(cv2.CAP_PROP_EXPOSURE)
+        self.CAM_FPS = dwe_camera.get(cv2.CAP_PROP_FPS)
+
         # Error Check
         if ((dwe_camera == None) or (not dwe_camera.isOpened())):
             rospy.logerr('\nError - could not open video device.\n')
@@ -71,7 +70,8 @@ class ImagePublisher(object):
     
     def exposure_callback(self, exposure_time):
         rospy.loginfo(f"Setting exposure time to: {exposure_time.data}")
-        self.expo_time = exposure_time.data
+        self.expo_time = self.cam.get(cv2.CAP_PROP_EXPOSURE)
+        # self.expo_time = exposure_time.data
         self.cam.set(cv2.CAP_PROP_EXPOSURE, exposure_time.data)
 
     def timer_callback(self, event):
