@@ -1,0 +1,18 @@
+<?xml version="1.0"?>
+<package format="2">
+  <name>dwe_camera</name>
+  <version>0.0.0</version>
+  <description>dwe camera ros package</description>
+
+  <maintainer email="yweifu@uri.edu">Yuewei</maintainer>
+  <license>MIT</license>
+
+  <buildtool_depend>catkin</buildtool_depend>
+  <depend>message_generation</depend>
+  <depend>message_runtime</depend>  
+  <depend>rospy</depend>
+  <depend>cv_bridge</depend>
+  <depend>std_msgs</depend>
+  <depend>sensor_msgs</depend>
+  
+</package>
