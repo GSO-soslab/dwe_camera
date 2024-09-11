@@ -1,22 +1,28 @@
 import cv2
 import rospy
 from cv_bridge import CvBridge
+from dynamic_reconfigure.server import Server
 from std_msgs.msg import Float32
 from sensor_msgs.msg import Image, CompressedImage, Illuminance
+from dwe_camera.msg import CamParameters
+from dwe_camera.cfg import CamSettingsConfig
 
-class ImagePublisher(object):
+class ImagePublisher():
     def __init__(self):
         # publisher
         self.image_pub = rospy.Publisher("~image", Image, queue_size=10)
         self.compressed_image_pub = rospy.Publisher("~image/compressed", CompressedImage, queue_size=10)
-        self.exposure_time_pub = rospy.Publisher("~image/exposure_time", Illuminance, queue_size=10)
+        self.cam_settings_pub = rospy.Publisher("~camera_settings", CamParameters, queue_size=10)
+
         # subscriber
-        self.exposure_time_sub = rospy.Subscriber("~set_exposure", Float32, self.exposure_callback )
+        self.cam_settings_sub = rospy.Subscriber("~set_cam_settings", CamParameters, self.cam_settings_callback)
 
         self.bridge = CvBridge()
         self.cam = self.cam_params()
         self.frame_count = 0
         self.frame_id = rospy.get_param('~frame_id', 'dwe_camera')
+
+        self.srv = Server(CamSettingsConfig, self.dynamic_config_callback)
 
         # Timer to call the run method periodically
         self.timer = rospy.Timer(rospy.Duration(1.0 / self.CAM_FPS), self.timer_callback)
@@ -69,13 +75,57 @@ class ImagePublisher(object):
         rospy.loginfo("Releasing Camera!")
         self.cam.release()
     
-    def exposure_callback(self, exposure_time):
-        rospy.loginfo(f"Setting exposure time to: {exposure_time.data}")
-        self.cam.set(cv2.CAP_PROP_EXPOSURE, exposure_time.data)
-        self.expo_time = self.cam.get(cv2.CAP_PROP_EXPOSURE)
+    def cam_settings_callback(self, cam_settings):
+        self.cam.set(cv2.CAP_PROP_BRIGHTNESS, cam_settings.brightness)
+        self.cam.set(cv2.CAP_PROP_CONTRAST, cam_settings.contrast)
+        self.cam.set(cv2.CAP_PROP_SATURATION, cam_settings.saturation)
+        self.cam.set(cv2.CAP_PROP_HUE, cam_settings.hue)
+        self.cam.set(cv2.CAP_PROP_GAMMA, cam_settings.gamma)
+        self.cam.set(cv2.CAP_PROP_GAIN, cam_settings.gain)
+        self.cam.set(cv2.CAP_PROP_SHARPNESS, cam_settings.sharpness)
+        self.cam.set(cv2.CAP_PROP_EXPOSURE, cam_settings.exposure)
+
+        rospy.loginfo(f"Camera Settings: \n"
+              f"brightness: {int(self.cam.get(cv2.CAP_PROP_BRIGHTNESS))}\n"
+              f"contrast: {int(self.cam.get(cv2.CAP_PROP_CONTRAST))}\n"
+              f"saturation: {int(self.cam.get(cv2.CAP_PROP_SATURATION))}\n"
+              f"hue: {int(self.cam.get(cv2.CAP_PROP_HUE))}\n"
+              f"gamma: {int(self.cam.get(cv2.CAP_PROP_GAMMA))}\n"
+              f"gain: {int(self.cam.get(cv2.CAP_PROP_GAIN))}\n"
+              f"sharpness: {int(self.cam.get(cv2.CAP_PROP_SHARPNESS))}\n"
+              f"exposure: {int(self.cam.get(cv2.CAP_PROP_EXPOSURE))}")
+        
 
     def timer_callback(self, event):
         self.run()
+    
+    def dynamic_config_callback(self, cam_params, level):
+        self.cam.set(cv2.CAP_PROP_BRIGHTNESS, cam_params.brightness)
+        self.cam.set(cv2.CAP_PROP_CONTRAST, cam_params.contrast)
+        self.cam.set(cv2.CAP_PROP_SATURATION, cam_params.saturation)
+        self.cam.set(cv2.CAP_PROP_HUE, cam_params.hue)
+        self.cam.set(cv2.CAP_PROP_GAMMA, cam_params.gamma)
+        self.cam.set(cv2.CAP_PROP_GAIN, cam_params.gain)
+        self.cam.set(cv2.CAP_PROP_SHARPNESS, cam_params.sharpness)
+        self.cam.set(cv2.CAP_PROP_EXPOSURE, cam_params.exposure)
+        return cam_params
+
+    def get_cam_settings(self):
+        cam_settings = CamParameters()
+        cam_settings.header.seq = self.frame_count
+        cam_settings.header.stamp = self.time_now
+        cam_settings.header.frame_id = self.frame_id
+        cam_settings.brightness = int(self.cam.get(cv2.CAP_PROP_BRIGHTNESS))
+        cam_settings.contrast = int(self.cam.get(cv2.CAP_PROP_CONTRAST))
+        cam_settings.saturation = int(self.cam.get(cv2.CAP_PROP_SATURATION))
+        cam_settings.hue = int(self.cam.get(cv2.CAP_PROP_HUE))
+        cam_settings.gamma = int(self.cam.get(cv2.CAP_PROP_GAMMA))
+        cam_settings.gain = int(self.cam.get(cv2.CAP_PROP_GAIN))
+        cam_settings.sharpness = int(self.cam.get(cv2.CAP_PROP_SHARPNESS))
+        cam_settings.exposure = int(self.cam.get(cv2.CAP_PROP_EXPOSURE))
+
+        return cam_settings
+        
 
     def run(self):
         self.success, self.frame = self.cam.read()
@@ -91,16 +141,13 @@ class ImagePublisher(object):
         self.image_message_compressed.header.seq = self.frame_count
         self.image_message_compressed.header.stamp = self.time_now
         self.image_message_compressed.header.frame_id = self.frame_id
-        # Exposure Time Message
-        self.expo_time_message = Illuminance()
-        self.expo_time_message.header.seq = self.frame_count
-        self.expo_time_message.header.stamp = self.time_now
-        self.expo_time_message.header.frame_id = self.frame_id
-        self.expo_time_message.illuminance = self.expo_time
+        # Camera Settings Message
+        self.cam_settings = self.get_cam_settings()
+
         # Publish
         self.image_pub.publish(self.image_message)
         self.compressed_image_pub.publish(self.image_message_compressed)
-        self.exposure_time_pub.publish(self.expo_time_message)
+        self.cam_settings_pub.publish(self.cam_settings)
 
         self.frame_count += 1
 

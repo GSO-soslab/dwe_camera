@@ -11,15 +11,29 @@ find_package(catkin REQUIRED COMPONENTS
   std_msgs
   sensor_msgs
   message_generation
+  dynamic_reconfigure
 )
 
 # add_service_files(
 #    FILES
 # )
 
+## Generate messages in the 'msg' folder
+add_message_files(
+  DIRECTORY msg
+  FILES
+  CamParameters.msg
+)
+
+
 generate_messages(
   DEPENDENCIES
-  # std_msgs
+  std_msgs
+)
+
+generate_dynamic_reconfigure_options(
+  cfg/CamSettings.cfg
+  #...
 )
 
 catkin_package(
