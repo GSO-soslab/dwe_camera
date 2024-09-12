@@ -14,4 +14,5 @@
 ### dependency
 ```
 pip3 install cv_bridge
+pip3 install opencv-python
 ```
