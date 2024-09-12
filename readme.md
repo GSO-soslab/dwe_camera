@@ -9,3 +9,9 @@
     ```
     rostopic echo -c /topic_name
     ```
+
+
+### dependency
+```
+pip3 install cv_bridge
+```
