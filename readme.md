@@ -16,3 +16,7 @@
 pip3 install cv_bridge
 pip3 install opencv-python
 ```
+- pi4
+  ```
+  sudo apt-get install libgl1-mesa-glx
+  ```
