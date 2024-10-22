@@ -9,6 +9,10 @@
     ```
     rostopic echo -c /topic_name
     ```
+- get usb camera device id
+    ```
+    v4l2-ctl --list-devices
+    ```
 
 
 ### dependency
@@ -20,3 +24,7 @@ pip3 install opencv-python
   ```
   sudo apt-get install libgl1-mesa-glx
   ```
+
+```
+sudo apt install v4l-utils
+```
