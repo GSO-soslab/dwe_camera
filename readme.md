@@ -19,6 +19,7 @@
 ```
 pip3 install cv_bridge
 pip3 install opencv-python
+pip3 install v4l2-python3
 ```
 - pi4
   ```
