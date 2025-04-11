@@ -4,7 +4,7 @@
     <!-- Arguments -->
     <arg name="robot_name" default="race"/> <!-- Set your default robot name -->
     <arg name="enable_throttle" default="true"/> <!-- Option to easily disable throttling -->
-    <arg name="throttle_rate" default="5.0"/> <!-- Throttle rate in Hz -->
+    <arg name="throttle_rate" default="5"/> <!-- Throttle rate in Hz -->
 
     <!-- Define topic names using the robot_name -->
     <arg name="camera_topic_in" value="/$(arg robot_name)/dwe_camera/image/compressed"/>
