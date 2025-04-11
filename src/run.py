@@ -11,7 +11,7 @@ class ImagePublisher():
     def __init__(self):
         # publisher
         self.image_pub = rospy.Publisher("~image", Image, queue_size=10)
-        self.compressed_image_pub = rospy.Publisher("~image/compressed", CompressedImage, queue_size=10)
+        # self.compressed_image_pub = rospy.Publisher("~image/compressed", CompressedImage, queue_size=10)
         self.cam_settings_pub = rospy.Publisher("~camera_settings", CamParameters, queue_size=10)
 
         # subscriber
@@ -45,7 +45,7 @@ class ImagePublisher():
         # auto xposure
         AUTO_EXPO = rospy.get_param('~video/auto_exposure', 1)
         # exposure time
-        EXPO_TIME = rospy.get_param('~video/exposure_time', 50)
+        EXPO_TIME = rospy.get_param('~video/exposure_time', 30)
 
         # -- DEVICE SETUP --
         dwe_camera = cv2.VideoCapture(CAM_IDX)
@@ -69,6 +69,20 @@ class ImagePublisher():
             rospy.logerr('\nError - could not open video device.\n')
             exit(0)
 
+        rospy.loginfo(  f"Camera Settings: \n"
+                        f"Resolution: {int(dwe_camera.get(cv2.CAP_PROP_FRAME_WIDTH)), int(dwe_camera.get(cv2.CAP_PROP_FRAME_HEIGHT))}\n"
+                        f"Framerate: {int(dwe_camera.get(cv2.CAP_PROP_FPS))}\n"
+                        f"Auto Exposure: {dwe_camera.get(cv2.CAP_PROP_AUTO_EXPOSURE)}\n"
+                        f"brightness: {int(dwe_camera.get(cv2.CAP_PROP_BRIGHTNESS))}\n"
+                        f"contrast: {int(dwe_camera.get(cv2.CAP_PROP_CONTRAST))}\n"
+                        f"saturation: {int(dwe_camera.get(cv2.CAP_PROP_SATURATION))}\n"
+                        f"hue: {int(dwe_camera.get(cv2.CAP_PROP_HUE))}\n"
+                        f"gamma: {int(dwe_camera.get(cv2.CAP_PROP_GAMMA))}\n"
+                        f"gain: {int(dwe_camera.get(cv2.CAP_PROP_GAIN))}\n"
+                        f"sharpness: {int(dwe_camera.get(cv2.CAP_PROP_SHARPNESS))}\n"
+                        f"exposure: {int(dwe_camera.get(cv2.CAP_PROP_EXPOSURE))}"
+                     )
+
         return dwe_camera
 
     def shutdown(self):
@@ -85,15 +99,16 @@ class ImagePublisher():
         self.cam.set(cv2.CAP_PROP_SHARPNESS, cam_settings.sharpness)
         self.cam.set(cv2.CAP_PROP_EXPOSURE, cam_settings.exposure)
 
-        rospy.loginfo(f"Camera Settings: \n"
-              f"brightness: {int(self.cam.get(cv2.CAP_PROP_BRIGHTNESS))}\n"
-              f"contrast: {int(self.cam.get(cv2.CAP_PROP_CONTRAST))}\n"
-              f"saturation: {int(self.cam.get(cv2.CAP_PROP_SATURATION))}\n"
-              f"hue: {int(self.cam.get(cv2.CAP_PROP_HUE))}\n"
-              f"gamma: {int(self.cam.get(cv2.CAP_PROP_GAMMA))}\n"
-              f"gain: {int(self.cam.get(cv2.CAP_PROP_GAIN))}\n"
-              f"sharpness: {int(self.cam.get(cv2.CAP_PROP_SHARPNESS))}\n"
-              f"exposure: {int(self.cam.get(cv2.CAP_PROP_EXPOSURE))}")
+        rospy.loginfo(  f"Camera Settings: \n"
+                        f"brightness: {int(self.cam.get(cv2.CAP_PROP_BRIGHTNESS))}\n"
+                        f"contrast: {int(self.cam.get(cv2.CAP_PROP_CONTRAST))}\n"
+                        f"saturation: {int(self.cam.get(cv2.CAP_PROP_SATURATION))}\n"
+                        f"hue: {int(self.cam.get(cv2.CAP_PROP_HUE))}\n"
+                        f"gamma: {int(self.cam.get(cv2.CAP_PROP_GAMMA))}\n"
+                        f"gain: {int(self.cam.get(cv2.CAP_PROP_GAIN))}\n"
+                        f"sharpness: {int(self.cam.get(cv2.CAP_PROP_SHARPNESS))}\n"
+                        f"exposure: {int(self.cam.get(cv2.CAP_PROP_EXPOSURE))}"
+                     )
         
 
     def timer_callback(self, event):
@@ -146,7 +161,7 @@ class ImagePublisher():
 
         # Publish
         self.image_pub.publish(self.image_message)
-        self.compressed_image_pub.publish(self.image_message_compressed)
+        # self.compressed_image_pub.publish(self.image_message_compressed)
         self.cam_settings_pub.publish(self.cam_settings)
 
         self.frame_count += 1

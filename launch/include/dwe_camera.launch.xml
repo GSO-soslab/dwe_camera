@@ -10,7 +10,7 @@
 -->
 <launch>
     <arg name="robot_name" default="changeme"/>
-    <node ns="$(arg robot_name)" pkg="dwe_camera" type="run.py" name="dwe_camera" output="screen">
+    <node ns="$(arg robot_name)" pkg="dwe_camera" type="v4l2_camera_node.py" name="dwe_camera" output="screen">
       <rosparam command="load" file="$(find dwe_camera)/config/dwe_camera.yaml"/>
       <param name="frame_id" value="$(arg robot_name)/dwe_camera"/>
     </node>

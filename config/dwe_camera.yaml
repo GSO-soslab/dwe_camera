@@ -1,7 +1,9 @@
 video:
-  id: 2
-  width: 800
-  height: 600
-  framerate: 15
-  auto_exposure: 1
-  exposure_time: 50
+  device: /dev/video2
+  width: 1600
+  height: 1200
+  fps: 15
+  frame_id: v4l2_camera
+  buffers: 4
+  auto_exposure: 1          # 1 is manual, 3 is auto
+  exposure_time: 205
