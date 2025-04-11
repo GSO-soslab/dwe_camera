@@ -1,10 +1,25 @@
 <?xml version="1.0"?>
 
 <launch>
-    <arg name="robot_name" default="race"/>
-    
+    <!-- Arguments -->
+    <arg name="robot_name" default="race"/> <!-- Set your default robot name -->
+    <arg name="enable_throttle" default="true"/> <!-- Option to easily disable throttling -->
+    <arg name="throttle_rate" default="5.0"/> <!-- Throttle rate in Hz -->
+
+    <!-- Define topic names using the robot_name -->
+    <arg name="camera_topic_in" value="/$(arg robot_name)/dwe_camera/image/compressed"/>
+    <!-- Note: Changed output topic slightly to avoid '/compressed' suffix confusion for viewers later -->
+    <arg name="camera_topic_out_throttled" value="/$(arg robot_name)/dwe_camera/image/compressed_throttled"/>
+
+    <!-- Include the camera node launch file -->
     <include file="$(find dwe_camera)/launch/include/dwe_camera.launch.xml">
         <arg name="robot_name" value="$(arg robot_name)"/>
     </include>
+
+    <!-- Launch the throttle node conditionally -->
+    <!-- Note: throttle node runs in the global namespace by default -->
+    <node if="$(arg enable_throttle)" pkg="topic_tools" type="throttle" name="image_throttle_$(arg robot_name)"
+          args="messages $(arg camera_topic_in) $(arg throttle_rate) $(arg camera_topic_out_throttled)"
+          output="screen"/>
 
 </launch>
