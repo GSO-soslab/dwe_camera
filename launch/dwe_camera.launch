@@ -5,10 +5,10 @@
     <arg name="robot_name" default="race"/> <!-- Set your default robot name -->
     <arg name="enable_throttle" default="true"/> <!-- Option to easily disable throttling -->
     <arg name="throttle_rate" default="5"/> <!-- Throttle rate in Hz -->
+    <arg name="throttle_delay" default="3.0"/> <!-- Delay in seconds before starting throttle -->
 
     <!-- Define topic names using the robot_name -->
     <arg name="camera_topic_in" value="/$(arg robot_name)/dwe_camera/image/compressed"/>
-    <!-- Note: Changed output topic slightly to avoid '/compressed' suffix confusion for viewers later -->
     <arg name="camera_topic_out_throttled" value="/$(arg robot_name)/dwe_camera/image_throttle/compressed"/>
 
     <!-- Include the camera node launch file -->
@@ -20,6 +20,8 @@
     <!-- Note: throttle node runs in the global namespace by default -->
     <node if="$(arg enable_throttle)" pkg="topic_tools" type="throttle" name="image_throttle_$(arg robot_name)"
           args="messages $(arg camera_topic_in) $(arg throttle_rate) $(arg camera_topic_out_throttled)"
-          output="screen"/>
+          output="screen"
+          launch-prefix="bash -c 'sleep $(arg throttle_delay); $0 $@'"/>
+          <!-- Alternative simpler prefix (often works): launch-prefix="sleep $(arg throttle_delay) &&" -->
 
 </launch>
