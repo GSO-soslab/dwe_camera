@@ -4,10 +4,10 @@
     <!-- Arguments -->
     <arg name="robot_name" default="race"/>
     <arg name="enable_resize_throttle" default="true"/> <!-- Option for combined node -->
-    <arg name="output_rate" default="5.0"/> <!-- Target output rate (Hz) -->
-    <arg name="output_width" default="640"/> <!-- Target output width -->
-    <arg name="output_height" default="480"/> <!-- Target output height -->
-    <arg name="output_jpeg_quality" default="80"/> <!-- Output JPEG quality -->
+    <arg name="output_rate" default="7.0"/> <!-- Target output rate (Hz) -->
+    <arg name="output_width" default="200"/> <!-- Target output width -->
+    <arg name="output_height" default="150"/> <!-- Target output height -->
+    <arg name="output_jpeg_quality" default="75"/> <!-- Output JPEG quality -->
 
     <!-- Define topic names -->
     <arg name="camera_topic_in" value="/$(arg robot_name)/dwe_camera/image/compressed"/>
