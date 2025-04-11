@@ -9,7 +9,7 @@
     <!-- Define topic names using the robot_name -->
     <arg name="camera_topic_in" value="/$(arg robot_name)/dwe_camera/image/compressed"/>
     <!-- Note: Changed output topic slightly to avoid '/compressed' suffix confusion for viewers later -->
-    <arg name="camera_topic_out_throttled" value="/$(arg robot_name)/dwe_camera/image/compressed_throttled"/>
+    <arg name="camera_topic_out_throttled" value="/$(arg robot_name)/dwe_camera/image_throttle/compressed"/>
 
     <!-- Include the camera node launch file -->
     <include file="$(find dwe_camera)/launch/include/dwe_camera.launch.xml">
