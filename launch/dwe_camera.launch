@@ -2,26 +2,34 @@
 
 <launch>
     <!-- Arguments -->
-    <arg name="robot_name" default="race"/> <!-- Set your default robot name -->
-    <arg name="enable_throttle" default="true"/> <!-- Option to easily disable throttling -->
-    <arg name="throttle_rate" default="5"/> <!-- Throttle rate in Hz -->
-    <arg name="throttle_delay" default="3.0"/> <!-- Delay in seconds before starting throttle -->
+    <arg name="robot_name" default="race"/>
+    <arg name="enable_resize_throttle" default="true"/> <!-- Option for combined node -->
+    <arg name="output_rate" default="5.0"/> <!-- Target output rate (Hz) -->
+    <arg name="output_width" default="640"/> <!-- Target output width -->
+    <arg name="output_height" default="480"/> <!-- Target output height -->
+    <arg name="output_jpeg_quality" default="80"/> <!-- Output JPEG quality -->
 
-    <!-- Define topic names using the robot_name -->
+    <!-- Define topic names -->
     <arg name="camera_topic_in" value="/$(arg robot_name)/dwe_camera/image/compressed"/>
-    <arg name="camera_topic_out_throttled" value="/$(arg robot_name)/dwe_camera/image_throttle/compressed"/>
+    <!-- Final topic after resizing & throttling -->
+    <arg name="camera_topic_final_lowbw" value="/$(arg robot_name)/dwe_camera/image_lowbw"/> <!-- Base name for output -->
 
-    <!-- Include the camera node launch file -->
+    <!-- Include the camera node launch file (publishes original stream) -->
     <include file="$(find dwe_camera)/launch/include/dwe_camera.launch.xml">
         <arg name="robot_name" value="$(arg robot_name)"/>
     </include>
 
-    <!-- Launch the throttle node conditionally -->
-    <!-- Note: throttle node runs in the global namespace by default -->
-    <node if="$(arg enable_throttle)" pkg="topic_tools" type="throttle" name="image_throttle_$(arg robot_name)"
-          args="messages $(arg camera_topic_in) $(arg throttle_rate) $(arg camera_topic_out_throttled)"
-          output="screen"
-          launch-prefix="bash -c 'sleep $(arg throttle_delay); $0 $@'"/>
-          <!-- Alternative simpler prefix (often works): launch-prefix="sleep $(arg throttle_delay) &&" -->
+    <!-- Launch the Combined Resize & Throttle Node -->
+    <node if="$(arg enable_resize_throttle)" pkg="dwe_camera" type="image_resizer_throttle.py" name="image_resize_throttle_$(arg robot_name)" output="screen">
+        <!-- Input is the original camera topic -->
+        <param name="input_topic" value="$(arg camera_topic_in)"/>
+        <!-- Output base name -->
+        <param name="output_topic_base" value="$(arg camera_topic_final_lowbw)"/>
+        <!-- Parameters for the node -->
+        <param name="target_rate" value="$(arg output_rate)"/>
+        <param name="target_width" value="$(arg output_width)"/>
+        <param name="target_height" value="$(arg output_height)"/>
+        <param name="jpeg_quality" value="$(arg output_jpeg_quality)"/>
+    </node>
 
 </launch>
