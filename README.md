@@ -1,0 +1,5 @@
+'''
+pip insall empy
+pip insatll catkin_pkg
+pip install numpy
+'''
