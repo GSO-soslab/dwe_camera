@@ -11,7 +11,7 @@
   <depend>std_msgs</depend>
   <depend>sensor_msgs</depend>
 
-  <depend>dwe_camera_msg</depend>
+  <depend>dwe_camera_interfaces</depend>
 
   <depend>rcl_interfaces</depend> <!-- For parameter services -->
   <depend>launch_ros</depend> <!-- For launch file utilities -->
