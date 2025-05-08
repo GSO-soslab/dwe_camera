@@ -1,7 +1,16 @@
-video:
-  id: 2
-  width: 800
-  height: 600
-  framerate: 15
-  auto_exposure: 1
-  exposure_time: 50
+/race/dwe_camera_node:
+  ros__parameters:
+    video:
+      id: 0
+      width: 1600
+      height: 1200
+      framerate: 15
+      auto_exposure: 1 # Or 1 for manual
+      exposure_time: 50 # Used if auto_exposure is 1
+    compression:
+      width: 320
+      height: 240
+      target_fps: 5
+      jpeg_quality: 75
+    ros: # Add this section if it doesn't exist, or just the parameter
+      frame_id: "/dwe_camera"
