@@ -10,7 +10,7 @@ from cv_bridge import CvBridge
 
 from std_msgs.msg import Header # Float32 not used directly here
 from sensor_msgs.msg import Image, CompressedImage
-from dwe_camera_msg.msg import CamParameters
+from dwe_camera_interfaces.msg import CamParameters
 
 class ImagePublisher(Node):
     def __init__(self):
