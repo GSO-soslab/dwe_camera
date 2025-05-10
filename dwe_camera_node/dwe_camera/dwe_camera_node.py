@@ -131,12 +131,17 @@ class ImagePublisher(Node):
             )
 
     def setup_ros(self):
+        # header and frame
+        self.header = Header()
+        self.frame_id = self.get_parameter('ros.frame_id').value
+        self.header.frame_id = self.frame_id
+
         # publisher
         self.image_pub = self.create_publisher(Image, "image", 10)
         self.image_msg = Image()
 
-        self.compressed_image_pub = self.create_publisher(CompressedImage, "image_lowbw/compressed", 10)
-        self.compressed_image_msg = CompressedImage()
+        self.compressed_image_pub = self.create_publisher(Image, "image_lowbw", 10)
+        self.compressed_image_msg = Image()
         
         self.cam_settings_pub = self.create_publisher(CamParameters, "camera_settings", 10)
         self.cam_settings_msg = CamParameters()
@@ -148,7 +153,7 @@ class ImagePublisher(Node):
         image_timer_period = 1.0 / self.CAM_FPS        
         self.timer = self.create_timer(image_timer_period, self.timer_callback)
 
-    def compress_image(self):
+    def compress_image(self, frame):
         if self.compressed_image_timer_period_duration is None: # Check if disabled
             return None
 
@@ -158,57 +163,38 @@ class ImagePublisher(Node):
         self.last_pub_time = time_now
 
         # --- Resizing ---
-        resized_image = cv2.resize(self.frame, (self.compressed_width, self.compressed_height), interpolation=cv2.INTER_LINEAR)
+        resized_image = cv2.resize(frame, (self.compressed_width, self.compressed_height), interpolation=cv2.INTER_LINEAR)
         # --- Compression ---
-        result, encoded_jpeg = cv2.imencode('.jpg', resized_image, self.encode_param)
-        
-        if not result:
-            self.get_logger().warn("JPEG encoding failed.")
-            return None
-        return encoded_jpeg
+        # result, encoded_jpeg = cv2.imencode('.jpg', resized_image, self.encode_param)
+
+        return resized_image
 
     def timer_callback(self):
-        frame_id = self.get_parameter('ros.frame_id').value
 
-        header = Header()
-        header.stamp = self.get_clock().now().to_msg()
-        header.frame_id = frame_id
+        start_time = self.get_clock().now()
+        self.header.stamp = self.get_clock().now().to_msg()
         
-        if not self.dwe_camera or not self.dwe_camera.isOpened():
-            self.get_logger().error("Camera is not open in timer_callback. Attempting to stop node.")
-            # This is a severe error, node should probably stop.
-            # For now, just log and skip. Consider a more robust shutdown.
-            rclpy.shutdown() # Initiate shutdown
-            return
-        read_start_time = self.get_clock().now()
-        self.success, self.frame = self.dwe_camera.read()
-        read_end_time = self.get_clock().now()
-        read_duration_ms = (read_end_time - read_start_time).nanoseconds / 1e6
-        self.get_logger().info(f"cv2 read image time: {read_duration_ms}")
-        if not self.success or self.frame is None:
-            self.get_logger().warn("Failed to retrieve frame from camera or frame is None. Skipping frame.")
-            return
+        # if not self.dwe_camera or not self.dwe_camera.isOpened():
+        #     self.get_logger().error("Camera is not open in timer_callback. Attempting to stop node.")
+        #     rclpy.shutdown() # Initiate shutdown
+        #     return
+        
+        success, frame = self.dwe_camera.read()
 
         # image message
-        try:
-            self.image_msg = self.bridge.cv2_to_imgmsg(self.frame, encoding='bgr8')
-        except Exception as e:
-            self.get_logger().error(f"cv_bridge conversion error: {e}")
-            return
-            
-        self.image_msg.header = header
+        self.image_msg = self.bridge.cv2_to_imgmsg(frame, encoding='bgr8')
+        self.image_msg.header = self.header
         self.image_pub.publish(self.image_msg)
 
         # compressed image message
-        encoded_jpeg_data = self.compress_image()
-        if encoded_jpeg_data is not None:
-            self.compressed_image_msg.header = header
-            self.compressed_image_msg.format = "jpeg"
-            self.compressed_image_msg.data = encoded_jpeg_data.tobytes()
+        resized_img = self.compress_image(frame)
+        if resized_img is not None:
+            self.compressed_image_msg = self.bridge.cv2_to_imgmsg(resized_img, encoding='bgr8')
+            self.compressed_image_msg.header = self.header
             self.compressed_image_pub.publish(self.compressed_image_msg)
         
         # camera setting message
-        self.cam_settings_msg.header = header
+        self.cam_settings_msg.header = self.header
         self.cam_settings_msg.brightness = int(self.dwe_camera.get(cv2.CAP_PROP_BRIGHTNESS))
         self.cam_settings_msg.contrast = int(self.dwe_camera.get(cv2.CAP_PROP_CONTRAST))
         self.cam_settings_msg.saturation = int(self.dwe_camera.get(cv2.CAP_PROP_SATURATION))
@@ -219,6 +205,10 @@ class ImagePublisher(Node):
         self.cam_settings_msg.exposure = int(self.dwe_camera.get(cv2.CAP_PROP_EXPOSURE))
         self.cam_settings_msg.auto_exposure = int(self.dwe_camera.get(cv2.CAP_PROP_AUTO_EXPOSURE))
         self.cam_settings_pub.publish(self.cam_settings_msg)
+
+        end_time = self.get_clock().now()
+        duration_ms = (end_time - start_time).nanoseconds / 1e6
+        self.get_logger().info(f"callback duration(ms): {duration_ms}")
 
     def destroy_node_custom(self):
         """Custom cleanup method."""
