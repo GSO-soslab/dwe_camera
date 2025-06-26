@@ -37,6 +37,7 @@
       height: 720
       framerate: 15
       format: 'MJPG'
+      jpeg_quality_recompress: 95
     compression:
       width: 320
       height: 240
