@@ -4,17 +4,15 @@ from rclpy.executors import ExternalShutdownException, MultiThreadedExecutor
 from rclpy.parameter import Parameter
 from rclpy.time import Duration
 import cv2
-from cv_bridge import CvBridge
 
 from std_msgs.msg import Header
-from sensor_msgs.msg import Image
+from sensor_msgs.msg import CompressedImage
 from dwe_camera_interfaces.msg import CamParameters
 
 class ImagePublisher(Node):
     def __init__(self):
         super().__init__('dwe_camera_node')
 
-        self.bridge = CvBridge()
         self.dwe_camera = None  # Initialize camera object to None
         self.latest_raw_frame = None # To store the latest frame for other callbacks
         self.latest_header = Header() # To store the latest header
@@ -71,7 +69,7 @@ class ImagePublisher(Node):
                 ('compression.width', 320),
                 ('compression.height', 240),
                 ('compression.target_fps', 5),
-                ('compression.jpeg_quality', 75)],) # jpeg_quality not used in current compress_image
+                ('compression.jpeg_quality', 75)],)
         # camera related
         self.declare_parameters(
             namespace='',
@@ -153,8 +151,8 @@ class ImagePublisher(Node):
         self.latest_header.frame_id = self.get_parameter('ros.frame_id').value
 
         # publishers
-        self.image_pub = self.create_publisher(Image, "image", 10)
-        self.compressed_image_pub = self.create_publisher(Image, "image_lowbw", 10)
+        self.image_pub = self.create_publisher(CompressedImage, "image/compressed", 10)
+        self.compressed_image_pub = self.create_publisher(CompressedImage, "image_lowbw/compressed", 10)
         self.cam_settings_pub = self.create_publisher(CamParameters, "camera_settings", 10)
 
         # message instances
@@ -266,10 +264,22 @@ class ImagePublisher(Node):
 
         self.latest_raw_frame = frame # Store for other callbacks to use
 
-        # Publish raw image
-        image_msg = self.bridge.cv2_to_imgmsg(self.latest_raw_frame, encoding='bgr8')
-        image_msg.header = self.latest_header
-        self.image_pub.publish(image_msg)
+        # Create and publish a compressed image
+        jpeg_quality_recompress = self.get_parameter('video.jpeg_quality_recompress').value
+        encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), jpeg_quality_recompress]
+        result, encimg = cv2.imencode('.jpg', self.latest_raw_frame, encode_param)
+
+        if not result:
+            self.get_logger().warn("Could not encode frame to JPEG")
+            return
+        
+        compressed_msg = CompressedImage()
+        compressed_msg.header = self.latest_header
+        compressed_msg.format = "jpeg"
+        compressed_msg.data = encimg.tobytes()
+
+        self.image_pub.publish(compressed_msg)
+
 
     def compressed_image_callback(self):
         """Lower-frequency callback for processing and publishing a compressed image."""
@@ -280,6 +290,7 @@ class ImagePublisher(Node):
 
         compressed_width = self.get_parameter('compression.width').value
         compressed_height = self.get_parameter('compression.height').value
+        jpeg_quality = self.get_parameter('compression.jpeg_quality').value
 
         try:
             resized_image = cv2.resize(current_frame,
@@ -289,12 +300,20 @@ class ImagePublisher(Node):
             self.get_logger().error(f"Error during cv2.resize: {e}. Frame shape: {current_frame.shape}")
             return
 
-        compressed_image_msg = self.bridge.cv2_to_imgmsg(resized_image, encoding='bgr8')
-        
-        compressed_image_msg.header.frame_id = self.latest_header.frame_id
-        compressed_image_msg.header.stamp = self.get_clock().now().to_msg()
+        encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), jpeg_quality]
+        result, encimg = cv2.imencode('.jpg', resized_image, encode_param)
 
-        self.compressed_image_pub.publish(compressed_image_msg)
+        if not result:
+            self.get_logger().warn("Could not encode resized frame to JPEG")
+            return
+            
+        compressed_msg = CompressedImage()
+        compressed_msg.header.frame_id = self.latest_header.frame_id
+        compressed_msg.header.stamp = self.get_clock().now().to_msg()
+        compressed_msg.format = "jpeg"
+        compressed_msg.data = encimg.tobytes()
+
+        self.compressed_image_pub.publish(compressed_msg)
 
     def destroy_node_custom(self):
         """Custom cleanup method called explicitly in main's finally block."""

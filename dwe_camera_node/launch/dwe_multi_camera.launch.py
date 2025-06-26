@@ -21,8 +21,8 @@ def generate_launch_description():
         output='screen',
         parameters=[dual_camera_params_path],
         remappings=[
-            ('image', 'exploreHD/image'),
-            ('image_lowbw', 'exploreHD/image_lowbw'),
+            ('image/compressed', 'exploreHD/image/compressed'),
+            ('image_lowbw/compressed', 'exploreHD/image_lowbw/compressed'),
             ('camera_settings', 'exploreHD/camera_settings'),
         ]
     )
@@ -35,8 +35,8 @@ def generate_launch_description():
         output='screen',
         parameters=[dual_camera_params_path],
         remappings=[
-            ('image', 'usbpcb/image'),
-            ('image_lowbw', 'usbpcb/image_lowbw'),
+            ('image/compressed', 'usbpcb/image/compressed'),
+            ('image_lowbw/compressed', 'usbpcb/image_lowbw/compressed'),
             ('camera_settings', 'usbpcb/camera_settings'),
         ]
     )
