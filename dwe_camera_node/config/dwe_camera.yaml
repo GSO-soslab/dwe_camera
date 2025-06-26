@@ -1,20 +1,34 @@
-/race/dwe_camera_node:
-  ros__parameters:
-    video:
-      id: 0
-      width: 1600
-      height: 1200
-      framerate: 15
-      # auto_exposure: 1 # Or 1 for manual
-      # exposure_time: 50 # Used if auto_exposure is 1
-    compression:
-      width: 320
-      height: 240
-      target_fps: 5
-      jpeg_quality: 75
-    camera:
-      auto_exposure: True # Or 1 for manual
-      exposure_time: 50 # Used if auto_exposure is 1
-    ros: # Add this section if it doesn't exist, or just the parameter
-      frame_id: "/dwe_camera"
-      param_update_rate: 1
+# Default parameters for the dwe_camera_node.
+# This file no longer contains the top-level node name, making it reusable.
+ros__parameters:
+  # Video stream settings
+  video:
+    id: 2
+    width: 1920
+    height: 1080
+    framerate: 10
+    format: 'MJPG' # More common than h264 for direct cv2 use
+
+  # Settings for the low-bandwidth compressed stream
+  compression:
+    width: 320
+    height: 240
+    target_fps: 5 # Should be <= video.framerate
+    jpeg_quality: 75
+
+  # Camera hardware control settings
+  camera:
+    auto_exposure: True   # True for auto, False for manual
+    exposure_time: 156    # Absolute exposure time (used if auto_exposure is False)
+    brightness: 0
+    contrast: 32
+    saturation: 64
+    hue: 0
+    gamma: 100
+    gain: 0
+    sharpness: 3
+
+  # ROS-specific settings
+  ros:
+    frame_id: "dwe_camera_frame" # A more descriptive default frame_id
+    param_update_rate: 1.0       # Rate in Hz to check for parameter updates

@@ -1,13 +1,13 @@
 import rclpy
 from rclpy.node import Node
-from rclpy.executors import ExternalShutdownException
+from rclpy.executors import ExternalShutdownException, MultiThreadedExecutor
 from rclpy.parameter import Parameter
 from rclpy.time import Duration
 import cv2
 from cv_bridge import CvBridge
 
 from std_msgs.msg import Header
-from sensor_msgs.msg import Image # CompressedImage is not strictly needed if publishing Image type
+from sensor_msgs.msg import Image
 from dwe_camera_interfaces.msg import CamParameters
 
 class ImagePublisher(Node):
@@ -54,7 +54,7 @@ class ImagePublisher(Node):
     def setup_params(self):
         # ros related
         self.declare_parameter('ros.frame_id', '/dwe_camera')
-        self.declare_parameter('ros.param_update_rate', 1) # Hz for camera param updates
+        self.declare_parameter('ros.param_update_rate', 1.0) # Hz for camera param updates
         # video related
         self.declare_parameters(
             namespace='',
@@ -62,7 +62,8 @@ class ImagePublisher(Node):
                 ('video.id', 0),
                 ('video.width', 1600),
                 ('video.height', 1200),
-                ('video.framerate', 15)],)
+                ('video.framerate', 15),
+                ('video.format', 'MJPG')],)
         # compression related
         self.declare_parameters(
             namespace='',
@@ -86,13 +87,14 @@ class ImagePublisher(Node):
                 ('camera.exposure_time', 156)],)
 
     def setup_cam(self):
-        [CAM_IDX_param, WIDTH_param, HEIGHT_param, CAM_FPS_param] = self.get_parameters(
-            ['video.id', 'video.width', 'video.height', 'video.framerate'])
+        [CAM_IDX_param, WIDTH_param, HEIGHT_param, CAM_FPS_param, VIDEO_FORMAT_param] = self.get_parameters(
+            ['video.id', 'video.width', 'video.height', 'video.framerate', 'video.format'])
         
         CAM_IDX = CAM_IDX_param.value
         WIDTH = WIDTH_param.value
         HEIGHT = HEIGHT_param.value
         CAM_FPS_REQUEST = CAM_FPS_param.value
+        VIDEO_FORMAT = VIDEO_FORMAT_param.value
 
         self.get_logger().info(f"Attempting to open camera {CAM_IDX} with V4L2 backend.")
         self.dwe_camera = cv2.VideoCapture(CAM_IDX, cv2.CAP_V4L2)
@@ -100,7 +102,13 @@ class ImagePublisher(Node):
         if not self.dwe_camera or not self.dwe_camera.isOpened():
             raise RuntimeError(f"Failed to open video device {CAM_IDX}")
 
-        self.dwe_camera.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*'MJPG'))
+        # Set video format
+        if len(VIDEO_FORMAT) == 4:
+            self.get_logger().info(f"Setting FOURCC format to: {VIDEO_FORMAT}")
+            self.dwe_camera.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*VIDEO_FORMAT))
+        else:
+            self.get_logger().warn(f"Video format '{VIDEO_FORMAT}' is not 4 characters long. Skipping FOURCC setting.")
+
         self.dwe_camera.set(cv2.CAP_PROP_FRAME_WIDTH, WIDTH)
         self.dwe_camera.set(cv2.CAP_PROP_FRAME_HEIGHT, HEIGHT)
         self.dwe_camera.set(cv2.CAP_PROP_FPS, CAM_FPS_REQUEST)
@@ -127,9 +135,14 @@ class ImagePublisher(Node):
 
         actual_width = self.dwe_camera.get(cv2.CAP_PROP_FRAME_WIDTH)
         actual_height = self.dwe_camera.get(cv2.CAP_PROP_FRAME_HEIGHT)
+        fourcc_val = self.dwe_camera.get(cv2.CAP_PROP_FOURCC)
+        try:
+            fourcc_str = "".join([chr((int(fourcc_val) >> 8 * i) & 0xFF) for i in range(4)]).strip()
+        except:
+            fourcc_str = "N/A"
         expo_time = self.dwe_camera.get(cv2.CAP_PROP_EXPOSURE)
         auto_expo = self.dwe_camera.get(cv2.CAP_PROP_AUTO_EXPOSURE)
-        self.get_logger().info(f"Actual Resolution: {actual_width}x{actual_height}, FPS: {self.CAM_FPS}, "
+        self.get_logger().info(f"Actual Resolution: {actual_width}x{actual_height}, FPS: {self.CAM_FPS}, Format: {fourcc_str}, "
                                f"Auto Exposure: {auto_expo}, Exposure Time: {expo_time}")
         
         # Call once to set initial non-exposure parameters
@@ -145,8 +158,6 @@ class ImagePublisher(Node):
         self.cam_settings_pub = self.create_publisher(CamParameters, "camera_settings", 10)
 
         # message instances
-        self.image_msg = Image()
-        self.compressed_image_msg = Image()
         self.cam_settings_msg = CamParameters()
 
     def setup_timers(self):
@@ -173,7 +184,6 @@ class ImagePublisher(Node):
         else:
             self.get_logger().warn("ros.param_update_rate <= 0, dynamic parameter updates disabled.")
 
-
     def apply_camera_parameters(self):
         """Applies current ROS parameters to the camera. Separated for clarity."""
         params_to_set = {
@@ -188,97 +198,89 @@ class ImagePublisher(Node):
         changed_params = []
         for param_name, cv_prop in params_to_set.items():
             param_value = self.get_parameter(param_name).value
-            # Only set if different from current camera value to reduce overhead
             current_cv_val = self.dwe_camera.get(cv_prop)
             if current_cv_val != param_value:
                 self.dwe_camera.set(cv_prop, param_value)
                 changed_params.append(f"{param_name}={param_value}")
 
-        # Handle exposure separately as it's conditional
         auto_exposure = self.get_parameter('camera.auto_exposure').value
         exposure_time = self.get_parameter('camera.exposure_time').value
-
-        # Get current camera auto exposure mode to avoid unnecessary sets if possible
         current_auto_exposure_mode_cv = self.dwe_camera.get(cv2.CAP_PROP_AUTO_EXPOSURE)
-        # V4L2: 1 = Manual Mode, 3 = Aperture Priority Mode (effectively auto)
         target_auto_exposure_mode_cv = 3 if auto_exposure else 1
 
         if current_auto_exposure_mode_cv != target_auto_exposure_mode_cv:
             self.dwe_camera.set(cv2.CAP_PROP_AUTO_EXPOSURE, target_auto_exposure_mode_cv)
             changed_params.append(f"camera.auto_exposure_mode_cv={target_auto_exposure_mode_cv}")
 
-        if not auto_exposure: # If manual mode is set or being set
-            if current_auto_exposure_mode_cv == 3: # Apply current exposure time setting if switched from auto to manual
+        if not auto_exposure:
+            current_exposure_time_cv = self.dwe_camera.get(cv2.CAP_PROP_EXPOSURE)
+            if current_exposure_time_cv != exposure_time :
                 self.dwe_camera.set(cv2.CAP_PROP_EXPOSURE, exposure_time)
                 changed_params.append(f"camera.exposure_time={exposure_time}")
-            else:
-                current_exposure_time_cv = self.dwe_camera.get(cv2.CAP_PROP_EXPOSURE)
-                if current_exposure_time_cv != exposure_time :
-                    self.dwe_camera.set(cv2.CAP_PROP_EXPOSURE, exposure_time)
-                    changed_params.append(f"camera.exposure_time={exposure_time}")
         
         if changed_params:
             self.get_logger().debug(f"Applied camera parameters: {', '.join(changed_params)}")
 
-
     def parameter_update_callback(self):
-        """Periodically applies ROS parameters to the camera."""
+        """Periodically applies ROS parameters to the camera and publishes current settings."""
         if self.dwe_camera and self.dwe_camera.isOpened():
             self.apply_camera_parameters()
+
+            # Read current settings from camera and publish them
+            header = Header()
+            header.stamp = self.get_clock().now().to_msg()
+            header.frame_id = self.latest_header.frame_id # Use consistent frame_id
+            self.cam_settings_msg.header = header
+            self.cam_settings_msg.brightness = int(self.dwe_camera.get(cv2.CAP_PROP_BRIGHTNESS))
+            self.cam_settings_msg.contrast = int(self.dwe_camera.get(cv2.CAP_PROP_CONTRAST))
+            self.cam_settings_msg.saturation = int(self.dwe_camera.get(cv2.CAP_PROP_SATURATION))
+            self.cam_settings_msg.hue = int(self.dwe_camera.get(cv2.CAP_PROP_HUE))
+            self.cam_settings_msg.gamma = int(self.dwe_camera.get(cv2.CAP_PROP_GAMMA))
+            self.cam_settings_msg.gain = int(self.dwe_camera.get(cv2.CAP_PROP_GAIN))
+            self.cam_settings_msg.sharpness = int(self.dwe_camera.get(cv2.CAP_PROP_SHARPNESS))
+            self.cam_settings_msg.exposure = int(self.dwe_camera.get(cv2.CAP_PROP_EXPOSURE))
+            self.cam_settings_msg.auto_exposure = int(self.dwe_camera.get(cv2.CAP_PROP_AUTO_EXPOSURE)) # 1 (manual) or 3 (auto)
+            
+            # Get and decode FOURCC
+            fourcc_val = self.dwe_camera.get(cv2.CAP_PROP_FOURCC)
+            try:
+                self.cam_settings_msg.video_format = "".join([chr((int(fourcc_val) >> 8 * i) & 0xFF) for i in range(4)]).strip()
+            except:
+                self.cam_settings_msg.video_format = "N/A"
+
+            self.cam_settings_pub.publish(self.cam_settings_msg)
         else:
             self.get_logger().warn("Parameter update: Camera not available.")
 
     def raw_image_capture_callback(self):
+        """High-frequency callback. Only does essential work: read, store, publish."""
         if not self.dwe_camera or not self.dwe_camera.isOpened():
             self.get_logger().error("Camera not available for raw image capture.")
             return
 
-        # start_time = self.get_clock().now() # For profiling if needed
         self.latest_header.stamp = self.get_clock().now().to_msg()
-
         success, frame = self.dwe_camera.read()
         if not success or frame is None:
             self.get_logger().warn("Failed to read frame from camera.")
             return
 
-        self.latest_raw_frame = frame # Store for other callbacks
+        self.latest_raw_frame = frame # Store for other callbacks to use
 
         # Publish raw image
-        self.image_msg = self.bridge.cv2_to_imgmsg(self.latest_raw_frame, encoding='bgr8')
-        self.image_msg.header = self.latest_header
-        self.image_pub.publish(self.image_msg)
-
-        # Publish camera settings (reflects current state from camera hardware)
-        self.cam_settings_msg.header = self.latest_header
-        self.cam_settings_msg.brightness = int(self.dwe_camera.get(cv2.CAP_PROP_BRIGHTNESS))
-        self.cam_settings_msg.contrast = int(self.dwe_camera.get(cv2.CAP_PROP_CONTRAST))
-        self.cam_settings_msg.saturation = int(self.dwe_camera.get(cv2.CAP_PROP_SATURATION))
-        self.cam_settings_msg.hue = int(self.dwe_camera.get(cv2.CAP_PROP_HUE))
-        self.cam_settings_msg.gamma = int(self.dwe_camera.get(cv2.CAP_PROP_GAMMA))
-        self.cam_settings_msg.gain = int(self.dwe_camera.get(cv2.CAP_PROP_GAIN))
-        self.cam_settings_msg.sharpness = int(self.dwe_camera.get(cv2.CAP_PROP_SHARPNESS))
-        self.cam_settings_msg.exposure = int(self.dwe_camera.get(cv2.CAP_PROP_EXPOSURE))
-        self.cam_settings_msg.auto_exposure = int(self.dwe_camera.get(cv2.CAP_PROP_AUTO_EXPOSURE)) # 1 (manual) or 3 (auto)
-        self.cam_settings_pub.publish(self.cam_settings_msg)
-
-        # end_time = self.get_clock().now()
-        # duration_ms = (end_time - start_time).nanoseconds / 1e6
-        # self.get_logger().debug(f"Raw image & settings processing time (ms): {duration_ms:.2f}")
-
+        image_msg = self.bridge.cv2_to_imgmsg(self.latest_raw_frame, encoding='bgr8')
+        image_msg.header = self.latest_header
+        self.image_pub.publish(image_msg)
 
     def compressed_image_callback(self):
+        """Lower-frequency callback for processing and publishing a compressed image."""
         if self.latest_raw_frame is None:
             return
 
         current_frame = self.latest_raw_frame
 
-        # --- Get compression parameters ---
         compressed_width = self.get_parameter('compression.width').value
         compressed_height = self.get_parameter('compression.height').value
-        # jpeg_quality = self.get_parameter('compression.jpeg_quality').value # Not used currently
 
-        # --- Resizing ---
-        # start_time = self.get_clock().now() # For profiling if needed
         try:
             resized_image = cv2.resize(current_frame,
                                    (compressed_width, compressed_height),
@@ -286,44 +288,35 @@ class ImagePublisher(Node):
         except cv2.error as e:
             self.get_logger().error(f"Error during cv2.resize: {e}. Frame shape: {current_frame.shape}")
             return
-        # --- Compression (currently just resizing, no JPEG encoding) ---
-        # If JPEG encoding is desired:
-        # encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), jpeg_quality]
-        # result, encoded_jpeg = cv2.imencode('.jpg', resized_image, encode_param)
-        # if not result:
-        #     self.get_logger().warn("JPEG encoding failed.")
-        #     return
-        # self.compressed_image_msg = self.bridge.cv2_to_compressed_imgmsg(encoded_jpeg, dst_format='jpg')
 
-        # For publishing uncompressed but resized Image
-        self.compressed_image_msg = self.bridge.cv2_to_imgmsg(resized_image, encoding='bgr8')
+        compressed_image_msg = self.bridge.cv2_to_imgmsg(resized_image, encoding='bgr8')
         
-        # Use a new timestamp for the compressed image or reuse the raw frame's timestamp
-        compressed_header = Header()
-        compressed_header.frame_id = self.latest_header.frame_id # Use same frame_id
-        compressed_header.stamp = self.get_clock().now().to_msg() # New timestamp for this processed image
+        compressed_image_msg.header.frame_id = self.latest_header.frame_id
+        compressed_image_msg.header.stamp = self.get_clock().now().to_msg()
 
-        self.compressed_image_msg.header = compressed_header
-        self.compressed_image_pub.publish(self.compressed_image_msg)
-
-        # end_time = self.get_clock().now()
-        # duration_ms = (end_time - start_time).nanoseconds / 1e6
-        # self.get_logger().debug(f"Compressed image processing time (ms): {duration_ms:.2f}")
+        self.compressed_image_pub.publish(compressed_image_msg)
 
     def destroy_node_custom(self):
         """Custom cleanup method called explicitly in main's finally block."""
         print(f"[{self.get_name()}] INFO: Executing custom node destruction (destroy_node_custom)...")
         self.cleanup_resources()
 
-
 def main():
     rclpy.init()
     node = None
     try:
         node = ImagePublisher()
-        rclpy.spin(node)
-    except (ExternalShutdownException, KeyboardInterrupt):
-        print("Shutdown_custom requested.")
+        # Use a MultiThreadedExecutor to allow callbacks to run in parallel.
+        # This prevents slow I/O in one callback (e.g., parameter updates)
+        # from blocking the time-sensitive image capture callback.
+        executor = MultiThreadedExecutor()
+        executor.add_node(node)
+        
+        try:
+            executor.spin()
+        except (ExternalShutdownException, KeyboardInterrupt):
+            print("Shutdown requested.")
+
     except RuntimeError as e:
         if node:
              node.get_logger().fatal(f"Node critical failure: {e}")
@@ -336,12 +329,12 @@ def main():
             print(f"Unhandled exception in main before node init: {e}")
     finally:
         if node:
-            node.destroy_node_custom() # Call explicit cleanup
-            if rclpy.ok(): # Check if context is still valid
-                 node.destroy_node() # Standard ROS 2 cleanup
+            node.destroy_node_custom()
+            if rclpy.ok():
+                 node.destroy_node()
                  print("ROS 2 node destroyed.")
         if rclpy.ok():
-            rclpy.try_shutdown() # Ensure rclpy is shutdown
+            rclpy.try_shutdown()
             print("RCLPY shutdown complete.")
 
 if __name__ == '__main__':

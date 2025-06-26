@@ -17,3 +17,5 @@ uint16 exposure                             #[1, 5000, 156]
 
 # Not Used
 uint8 auto_exposure                         #[0, 3, 3] (1-manual, 3-auto)
+
+string video_format                         # Current video format (e.g., 'MJPG', 'YUYV')
