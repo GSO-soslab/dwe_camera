@@ -152,7 +152,7 @@ class ImagePublisher(Node):
         self.latest_header.frame_id = self.get_parameter('ros.frame_id').value
 
         # publishers
-        self.image_pub = self.create_publisher(CompressedImage, "image/compressed", 10)
+        self.image_pub = self.create_publisher(CompressedImage, "image_mjpg", 10)
         self.compressed_image_pub = self.create_publisher(CompressedImage, "image_lowbw/compressed", 10)
         self.cam_settings_pub = self.create_publisher(CamParameters, "camera_settings", 10)
 
