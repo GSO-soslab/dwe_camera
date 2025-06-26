@@ -61,7 +61,8 @@ class ImagePublisher(Node):
                 ('video.width', 1600),
                 ('video.height', 1200),
                 ('video.framerate', 15),
-                ('video.format', 'MJPG')],)
+                ('video.format', 'MJPG'),
+                ('video.jpeg_quality_recompress', 95)],)
         # compression related
         self.declare_parameters(
             namespace='',
