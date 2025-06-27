@@ -8,11 +8,10 @@
       height: 720
       framerate: 15
       format: 'MJPG'
-      jpeg_quality_recompress: 95
     compression:
       width: 320
       height: 240
-      target_fps: 0
+      target_fps: 5.0
       jpeg_quality: 75
     camera:
       auto_exposure: True
@@ -26,7 +25,7 @@
       sharpness: 3
     ros:
       frame_id: "exploreHD_camera_frame" # Unique TF frame_id
-      param_update_rate: 15.0
+      settings_publish_rate: 1.0 # Rate in Hz to publish current settings
 
 # usbpcb camera
 /dwe_camera/usbpcb_camera_node:
@@ -37,11 +36,10 @@
       height: 720
       framerate: 15
       format: 'MJPG'
-      jpeg_quality_recompress: 95
     compression:
       width: 320
       height: 240
-      target_fps: 0
+      target_fps: 5.0
       jpeg_quality: 75
     camera:
       auto_exposure: True
@@ -55,5 +53,4 @@
       sharpness: 3
     ros:
       frame_id: "usbpcb_camera_frame" # Unique TF frame_id
-      param_update_rate: 15.0
-
+      settings_publish_rate: 1.0 # Rate in Hz to publish current settings
