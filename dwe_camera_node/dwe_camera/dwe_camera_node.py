@@ -1,70 +1,99 @@
 import rclpy
 from rclpy.node import Node
 from rclpy.executors import ExternalShutdownException, MultiThreadedExecutor
+from rclpy.callback_groups import MutuallyExclusiveCallbackGroup # Import CallbackGroup
 import cv2
 import numpy as np
-import traceback # Import the traceback module
+import traceback
+import time
 
 from std_msgs.msg import Header
 from sensor_msgs.msg import CompressedImage
 from dwe_camera_interfaces.msg import CamParameters
-# NEW: Imports for parameter handling
 from rcl_interfaces.msg import ParameterDescriptor, IntegerRange, SetParametersResult, FloatingPointRange
 
-# Import the new GStreamer camera class
-from .gstreamer_camera import GStreamerCamera
+# Import the new OpenCV-based camera class from the (conceptually renamed) file
+from .cv2_v4l2 import V4L2Camera
+
+# Node Design Philosophy:
+# This node uses two primary mechanisms for interacting with camera settings,
+# each serving a distinct purpose:
+#
+# 1. ROS 2 Parameters (The "Control" Interface):
+#    - All camera settings (brightness, exposure, etc.) are declared as ROS 2
+#      parameters in the `setup_params` method.
+#    - This is the **INPUT** to the node. Users and other systems should change
+#      camera settings by modifying these parameters (e.g., via a YAML file,
+#      `ros2 param set`, or `rqt_reconfigure`).
+#    - The `parameters_callback` function automatically applies these changes
+#      to the camera hardware.
+#
+# 2. The `camera_settings` Topic (The "Status" Interface):
+#    - This node publishes the current state of all settings on the
+#      `camera_settings` topic, using the `dwe_camera_interfaces/CamParameters`
+#      message.
+#    - This is the **OUTPUT** from the node. It's a broadcast of the camera's
+#      current, active configuration. It is published on startup and whenever a
+#      setting is changed.
+#    - This allows other nodes to easily monitor the camera's state without
+#      needing to query each parameter individually. It's useful for diagnostics,
+#      logging, and state-dependent logic in other parts of the system.
+
 
 class ImagePublisher(Node):
     def __init__(self):
         super().__init__('dwe_camera_node')
 
-        self.dwe_camera_cv = None
-        self.gstreamer_camera = None
+        # --- FIX: Create separate callback groups ---
+        # This prevents the high-frequency timers from blocking the parameter service server,
+        # which runs in the node's default callback group. This is the key to fixing the
+        # "asynchronous service call failed" error in rqt_reconfigure.
+        self.get_logger().info("Using separate callback groups for camera timers to ensure parameter services remain responsive.")
+        self.image_capture_cb_group = MutuallyExclusiveCallbackGroup()
+        self.compression_cb_group = MutuallyExclusiveCallbackGroup()
+        # The parameter callback will automatically use the default group.
+
+        self.v4l2_camera = None
         self.latest_raw_frame = None
         self.latest_header = Header()
         self.raw_image_timer = None
         self.compressed_image_timer = None
-        self.settings_publish_timer = None # RENAMED from param_update_timer
+        self.initial_settings_timer = None
 
-        self.param_to_gst_map = {
-            'camera.brightness': 'brightness', 'camera.contrast': 'contrast',
-            'camera.saturation': 'saturation', 'camera.hue': 'hue',
-            'camera.gamma': 'gamma', 'camera.gain': 'gain', 'camera.sharpness': 'sharpness',
-            'camera.auto_exposure': 'auto_exposure',
-            'camera.exposure_time': 'exposure_absolute'
-        }
+        # List of camera control parameter names. The V4L2Camera class handles the mapping.
+        self.camera_control_params = [
+            'brightness', 'contrast', 'saturation', 'hue', 'gamma', 'gain', 'sharpness',
+            'auto_exposure', 'exposure_time'
+        ]
+        
+        # V4L2 standard values for auto exposure control
         self.V4L2_EXPOSURE_MANUAL = 1
         self.V4L2_EXPOSURE_AUTO = 3
 
         try:
             self.setup_params()
-            self.setup_cam()
             self.setup_ros_elements()
-            self.publish_current_settings() # Publish initial state
-            self.setup_timers()
-            self.get_logger().info("DWE Camera Node successfully initialized with dynamic controls.")
+            self.setup_cam()
+            self.setup_timers() # Timers now handle initial publication
+            self.get_logger().info("DWE Camera Node successfully initialized using OpenCV for direct V4L2 access.")
         except Exception as e:
             self.get_logger().error(f"Error during node initialization: {e}", exc_info=True)
             self.cleanup_resources()
             raise
 
     def cleanup_resources(self):
-        self.get_logger().info(f"Executing resource cleanup...")
+        self.get_logger().info("Executing resource cleanup...")
         if self.raw_image_timer: self.raw_image_timer.cancel()
         if self.compressed_image_timer: self.compressed_image_timer.cancel()
-        if self.settings_publish_timer: self.settings_publish_timer.cancel() # RENAMED
-        if self.gstreamer_camera: self.gstreamer_camera.release()
-        if self.dwe_camera_cv and self.dwe_camera_cv.isOpened(): self.dwe_camera_cv.release()
+        if self.initial_settings_timer: self.initial_settings_timer.cancel()
+        if self.v4l2_camera: self.v4l2_camera.release()
 
     def setup_params(self):
         """
         Declares and configures ROS parameters for the node.
-        This now includes ParameterDescriptors to enable rich dynamic reconfiguration.
+        Only 'camera.*' parameters are dynamically configurable. All others are read-only after startup.
         """
-        # THE FIX IS HERE: Provide explicit descriptors for ALL parameters.
-        # This prevents type ambiguity that can confuse GUI tools like rqt_reconfigure.
-        
-        # Descriptors for camera controls
+        # === Dynamically-Configurable Camera Control Parameters ===
         brightness_descriptor = ParameterDescriptor(description='Image brightness [-64, 64]', integer_range=[IntegerRange(from_value=-64, to_value=64, step=1)])
         contrast_descriptor = ParameterDescriptor(description='Image contrast [0, 64]', integer_range=[IntegerRange(from_value=0, to_value=64, step=1)])
         saturation_descriptor = ParameterDescriptor(description='Image saturation [0, 128]', integer_range=[IntegerRange(from_value=0, to_value=128, step=1)])
@@ -75,37 +104,36 @@ class ImagePublisher(Node):
         exposure_descriptor = ParameterDescriptor(description='Exposure time [1, 5000]. Used when auto_exposure is False.', integer_range=[IntegerRange(from_value=1, to_value=5000, step=1)])
         auto_exposure_descriptor = ParameterDescriptor(description='Enable/disable auto exposure')
 
-        # Descriptors for ROS-specific and other parameters
-        frame_id_descriptor = ParameterDescriptor(description='The TF frame ID for the camera images.')
-        settings_publish_rate_descriptor = ParameterDescriptor(description='Rate (Hz) to publish the camera_settings topic.', floating_point_range=[FloatingPointRange(from_value=0.1, to_value=30.0, step=0.1)])
+        # === Read-Only ROS-Specific Parameters ===
+        frame_id_descriptor = ParameterDescriptor(description='The TF frame ID for the camera images. Read-only after startup.', read_only=True)
+        
+        # === Read-Only Video Stream Parameters ===
         video_id_descriptor = ParameterDescriptor(description='Camera device ID (e.g., /dev/videoX). Read-only after startup.', read_only=True)
         video_width_descriptor = ParameterDescriptor(description='Capture width in pixels. Read-only after startup.', read_only=True)
         video_height_descriptor = ParameterDescriptor(description='Capture height in pixels. Read-only after startup.', read_only=True)
         video_framerate_descriptor = ParameterDescriptor(description='Requested capture framerate (Hz). Read-only after startup.', read_only=True)
         video_format_descriptor = ParameterDescriptor(description='Capture format (e.g., MJPG). Read-only after startup.', read_only=True)
-        compression_width_descriptor = ParameterDescriptor(description='Width for the low-bandwidth compressed stream.', integer_range=[IntegerRange(from_value=80, to_value=1920, step=1)])
-        compression_height_descriptor = ParameterDescriptor(description='Height for the low-bandwidth compressed stream.', integer_range=[IntegerRange(from_value=60, to_value=1080, step=1)])
-        compression_fps_descriptor = ParameterDescriptor(description='Target FPS for the low-bandwidth compressed stream.', floating_point_range=[FloatingPointRange(from_value=0.0, to_value=30.0, step=0.5)])
-        jpeg_quality_descriptor = ParameterDescriptor(description='JPEG quality for low-bandwidth stream [0, 100]', integer_range=[IntegerRange(from_value=0, to_value=100, step=1)])
+        
+        # === Read-Only Compression Parameters ===
+        compression_width_descriptor = ParameterDescriptor(description='Width for the low-bandwidth compressed stream. Read-only after startup.', integer_range=[IntegerRange(from_value=80, to_value=1920, step=1)], read_only=True)
+        compression_height_descriptor = ParameterDescriptor(description='Height for the low-bandwidth compressed stream. Read-only after startup.', integer_range=[IntegerRange(from_value=60, to_value=1080, step=1)], read_only=True)
+        compression_fps_descriptor = ParameterDescriptor(description='Target FPS for the low-bandwidth compressed stream. Read-only after startup.', floating_point_range=[FloatingPointRange(from_value=0.0, to_value=30.0, step=0.5)], read_only=True)
+        jpeg_quality_descriptor = ParameterDescriptor(description='JPEG quality for low-bandwidth stream [0, 100]. Read-only after startup.', integer_range=[IntegerRange(from_value=0, to_value=100, step=1)], read_only=True)
 
-        # ROS-specific parameters
+        # Declare all parameters
         self.declare_parameter('ros.frame_id', 'dwe_camera_frame', frame_id_descriptor)
-        self.declare_parameter('ros.settings_publish_rate', 1.0, settings_publish_rate_descriptor)
 
-        # Video stream parameters (read-only after startup)
         self.declare_parameter('video.id', 2, video_id_descriptor)
         self.declare_parameter('video.width', 1920, video_width_descriptor)
         self.declare_parameter('video.height', 1080, video_height_descriptor)
         self.declare_parameter('video.framerate', 15, video_framerate_descriptor)
         self.declare_parameter('video.format', 'MJPG', video_format_descriptor)
 
-        # Compression parameters (dynamically configurable)
         self.declare_parameter('compression.width', 320, compression_width_descriptor)
         self.declare_parameter('compression.height', 240, compression_height_descriptor)
-        self.declare_parameter('compression.target_fps', 5.0, compression_fps_descriptor)
+        self.declare_parameter('compression.target_fps', 5, compression_fps_descriptor)
         self.declare_parameter('compression.jpeg_quality', 75, jpeg_quality_descriptor)
 
-        # Camera control parameters (dynamically configurable)
         self.declare_parameter('camera.brightness', 0, brightness_descriptor)
         self.declare_parameter('camera.contrast', 32, contrast_descriptor)
         self.declare_parameter('camera.saturation', 64, saturation_descriptor)
@@ -116,60 +144,57 @@ class ImagePublisher(Node):
         self.declare_parameter('camera.auto_exposure', True, auto_exposure_descriptor)
         self.declare_parameter('camera.exposure_time', 156, exposure_descriptor)
         
-        # Register the callback for parameter changes
         self.add_on_set_parameters_callback(self.parameters_callback)
 
     def setup_cam(self):
+        """Initializes the V4L2Camera with settings from ROS parameters."""
         cam_id = self.get_parameter('video.id').value
         width = self.get_parameter('video.width').value
         height = self.get_parameter('video.height').value
         fps_req = self.get_parameter('video.framerate').value
-        video_format = self.get_parameter('video.format').value
 
-        self.get_logger().info(f"Temporarily opening OpenCV camera {cam_id} for initial setup.")
-        self.dwe_camera_cv = cv2.VideoCapture(cam_id, cv2.CAP_V4L2)
-        if not self.dwe_camera_cv or not self.dwe_camera_cv.isOpened():
-            raise RuntimeError(f"Failed to open video device {cam_id} with OpenCV for setup.")
+        # Build a dictionary of initial camera controls from ROS params
+        initial_controls = self.get_current_controls_from_params()
+        self.get_logger().info(f"Initial controls from parameters: {initial_controls}")
         
-        if len(video_format) == 4:
-            self.dwe_camera_cv.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*video_format))
-        self.dwe_camera_cv.set(cv2.CAP_PROP_FRAME_WIDTH, width)
-        self.dwe_camera_cv.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
-        self.dwe_camera_cv.set(cv2.CAP_PROP_FPS, fps_req)
-        
-        self.apply_initial_parameters_opencv()
-
-        self.CAM_FPS = self.dwe_camera_cv.get(cv2.CAP_PROP_FPS)
-        if self.CAM_FPS <= 0:
-            self.CAM_FPS = float(fps_req)
-
-        self.dwe_camera_cv.release()
-        self.dwe_camera_cv = None
-
-        self.gstreamer_camera = GStreamerCamera(
+        self.v4l2_camera = V4L2Camera(
             device_id=cam_id, width=width, height=height,
-            framerate=int(self.CAM_FPS), logger=self.get_logger()
+            framerate=fps_req, logger=self.get_logger(),
+            initial_controls=initial_controls
         )
-        if not self.gstreamer_camera.start():
-            raise RuntimeError("GStreamer camera failed to start.")
-        
-        self.get_logger().info("GStreamer camera initialized successfully.")
 
-    def apply_initial_parameters_opencv(self):
-        """Sets initial camera parameters using the temporary OpenCV handle."""
-        if not self.dwe_camera_cv or not self.dwe_camera_cv.isOpened(): return
-        auto_exposure = self.get_parameter('camera.auto_exposure').value
-        exposure_time = self.get_parameter('camera.exposure_time').value
-        target_auto_exposure_cv = self.V4L2_EXPOSURE_AUTO if auto_exposure else self.V4L2_EXPOSURE_MANUAL
-        self.dwe_camera_cv.set(cv2.CAP_PROP_AUTO_EXPOSURE, target_auto_exposure_cv)
-        if not auto_exposure:
-            self.dwe_camera_cv.set(cv2.CAP_PROP_EXPOSURE, exposure_time)
-        params_to_set = { 'brightness': cv2.CAP_PROP_BRIGHTNESS, 'contrast': cv2.CAP_PROP_CONTRAST,
-            'saturation': cv2.CAP_PROP_SATURATION, 'hue': cv2.CAP_PROP_HUE, 'gamma': cv2.CAP_PROP_GAMMA,
-            'gain': cv2.CAP_PROP_GAIN, 'sharpness': cv2.CAP_PROP_SHARPNESS }
-        for name, cv_prop in params_to_set.items():
-            self.dwe_camera_cv.set(cv_prop, self.get_parameter(f'camera.{name}').value)
-        self.get_logger().info("Initial camera parameters applied via OpenCV.")
+        self.CAM_FPS = self.v4l2_camera.fps
+        self.get_logger().info("V4L2 camera initialized successfully via OpenCV.")
+
+    def get_current_controls_from_params(self, new_params=[]):
+        """
+        Constructs a dictionary of camera control values based on current
+        node parameters, optionally updated with a list of new parameters.
+        """
+        current_values = {p: self.get_parameter(f'camera.{p}').value for p in self.camera_control_params}
+        
+        for p in new_params:
+            # The parameter server ensures only 'camera.*' params trigger the callback,
+            # so we only need to handle those.
+            if p.name.startswith('camera.'):
+                control_name = p.name.split('.')[-1]
+                if control_name in current_values:
+                    current_values[control_name] = p.value
+        
+        controls_to_set = {}
+        for name, value in current_values.items():
+            if name == 'auto_exposure':
+                controls_to_set['auto_exposure'] = self.V4L2_EXPOSURE_AUTO if value else self.V4L2_EXPOSURE_MANUAL
+            elif name == 'exposure_time':
+                controls_to_set['exposure_absolute'] = value
+            else:
+                controls_to_set[name] = value
+        
+        if current_values['auto_exposure']:
+            if 'exposure_absolute' in controls_to_set:
+                del controls_to_set['exposure_absolute']
+
+        return controls_to_set
 
     def setup_ros_elements(self):
         self.latest_header.frame_id = self.get_parameter('ros.frame_id').value
@@ -179,80 +204,95 @@ class ImagePublisher(Node):
         self.cam_settings_msg = CamParameters()
 
     def setup_timers(self):
-        self.raw_image_timer = self.create_timer(1.0 / self.CAM_FPS, self.raw_image_capture_callback)
-        compressed_fps = self.get_parameter('compression.target_fps').value
+        if self.CAM_FPS > 0:
+            # --- FIX: Assign timer to its specific callback group ---
+            self.raw_image_timer = self.create_timer(
+                1.0 / self.CAM_FPS, 
+                self.raw_image_capture_callback,
+                callback_group=self.image_capture_cb_group)
+        else:
+            self.get_logger().warn("Camera FPS is 0. Raw image timer will not be started.")
+
+        compressed_fps = float(self.get_parameter('compression.target_fps').value)
         if compressed_fps > 0:
-            self.compressed_image_timer = self.create_timer(1.0 / compressed_fps, self.compressed_image_callback)
+            # --- FIX: Assign timer to its specific callback group ---
+            self.compressed_image_timer = self.create_timer(
+                1.0 / compressed_fps, 
+                self.compressed_image_callback,
+                callback_group=self.compression_cb_group)
         
-        settings_rate = self.get_parameter('ros.settings_publish_rate').value
-        if settings_rate > 0:
-            self.settings_publish_timer = self.create_timer(1.0 / settings_rate, self.publish_current_settings)
-
+        self.publish_initial_settings_once()
+        
+    def publish_initial_settings_once(self):
+        """
+        A one-shot callback that publishes the camera's initial settings and then
+        disables its own timer.
+        """
+        self.get_logger().info("Publishing initial camera settings...")
+        try:
+            self.publish_current_settings()
+        except Exception as e:
+            self.get_logger().error(f"Failed to publish initial settings: {e}", exc_info=True)
+        
     def parameters_callback(self, params):
-        """
-        This callback is triggered by the ROS framework whenever parameters are changed.
-        It rebuilds the entire camera control structure and applies it atomically.
-        """
-        # Create a dictionary of the new proposed values from this request
-        new_values = {p.name: p.value for p in params}
-
-        # Get a dictionary of all current camera control parameter values
-        current_params = {name: self.get_parameter(name).value for name in self.param_to_gst_map.keys()}
+        """Applies changed ROS parameters to the camera."""
+        self.get_logger().info("Parameter callback triggered!")
+        # Because non-camera parameters are read-only, this callback will only
+        # be triggered for 'camera.*' parameter changes.
+        controls_to_set = self.get_current_controls_from_params(params)
         
-        # Update the current values with the new ones that are being set
-        current_params.update(new_values)
-
-        controls_to_set = {}
+        self.get_logger().info(f"Applying new camera parameter set: {controls_to_set}")
+        if self.v4l2_camera:
+            self.v4l2_camera.set_controls(controls_to_set)
         
-        # Determine auto exposure setting (using the new value if it was changed)
-        auto_exposure_on = current_params['camera.auto_exposure']
-        gst_auto_prop = self.param_to_gst_map['camera.auto_exposure']
-        controls_to_set[gst_auto_prop] = self.V4L2_EXPOSURE_AUTO if auto_exposure_on else self.V4L2_EXPOSURE_MANUAL
-
-        # Build the GStreamer control structure
-        for ros_param, gst_prop in self.param_to_gst_map.items():
-            if ros_param == 'camera.auto_exposure':
-                continue
-            # Only apply exposure_time if auto exposure is disabled
-            if ros_param == 'camera.exposure_time' and auto_exposure_on:
-                continue
-            
-            controls_to_set[gst_prop] = current_params[ros_param]
-
-        self.get_logger().info(f"Applying new parameter set: {controls_to_set}")
-        self.gstreamer_camera.set_all_controls(controls_to_set)
-        
-        # The parameter values within the node are updated automatically by the framework
-        # before this callback runs. We can now publish the new state.
+        # Publish the updated settings immediately after applying them
         self.publish_current_settings()
-
         return SetParametersResult(successful=True)
 
     def publish_current_settings(self):
-        """Publishes the camera's state based on current ROS parameters."""
+        """
+        Queries the camera for its actual current settings and publishes them.
+        This provides the ground truth of the camera's state.
+        """
+
+        if not self.v4l2_camera:
+            self.get_logger().warn("Cannot publish settings, camera not initialized.")
+            return
+
+        # Get the actual settings directly from the camera hardware
+        try:
+            current_controls = self.v4l2_camera.get_all_controls()
+        except Exception as e:
+            self.get_logger().error(f"Failed to get camera controls: {e}", exc_info=True)
+            return
+
         header = Header(stamp=self.get_clock().now().to_msg(), frame_id=self.latest_header.frame_id)
         self.cam_settings_msg.header = header
         
-        # Populate message from ROS parameters, handling type conversions
-        auto_exposure_on = self.get_parameter('camera.auto_exposure').value
-        self.cam_settings_msg.auto_exposure = self.V4L2_EXPOSURE_AUTO if auto_exposure_on else self.V4L2_EXPOSURE_MANUAL
+        # Populate the message with values read from the camera. Use .get() for safety.
+        # The key from get_all_controls is 'auto_exposure' and its value is the V4L2 constant (1 or 3)
+        self.cam_settings_msg.auto_exposure = current_controls.get('auto_exposure', 0)
         
-        self.cam_settings_msg.brightness = int(self.get_parameter('camera.brightness').value)
-        self.cam_settings_msg.contrast = int(self.get_parameter('camera.contrast').value)
-        self.cam_settings_msg.saturation = int(self.get_parameter('camera.saturation').value)
-        self.cam_settings_msg.hue = int(self.get_parameter('camera.hue').value)
-        self.cam_settings_msg.gamma = int(self.get_parameter('camera.gamma').value)
-        self.cam_settings_msg.gain = int(self.get_parameter('camera.gain').value)
-        self.cam_settings_msg.sharpness = int(self.get_parameter('camera.sharpness').value)
-        self.cam_settings_msg.exposure = int(self.get_parameter('camera.exposure_time').value)
-
+        # The key from get_all_controls is 'exposure_time'
+        self.cam_settings_msg.exposure_time = current_controls.get('exposure_time', 0)
+        
+        self.cam_settings_msg.brightness = current_controls.get('brightness', 0)
+        self.cam_settings_msg.contrast = current_controls.get('contrast', 0)
+        self.cam_settings_msg.saturation = current_controls.get('saturation', 0)
+        self.cam_settings_msg.hue = current_controls.get('hue', 0)
+        self.cam_settings_msg.gamma = current_controls.get('gamma', 0)
+        self.cam_settings_msg.gain = current_controls.get('gain', 0)
+        self.cam_settings_msg.sharpness = current_controls.get('sharpness', 0)
+        
+        # This value is static and comes from parameters, not read from camera.
         self.cam_settings_msg.video_format = self.get_parameter('video.format').value
+
         self.cam_settings_pub.publish(self.cam_settings_msg)
 
     def raw_image_capture_callback(self):
-        if not (self.gstreamer_camera and self.gstreamer_camera.is_opened()): return
+        if not (self.v4l2_camera and self.v4l2_camera.is_opened()): return
         self.latest_header.stamp = self.get_clock().now().to_msg()
-        jpeg_data = self.gstreamer_camera.read_jpeg()
+        jpeg_data = self.v4l2_camera.read_jpeg()
         if jpeg_data:
             compressed_msg = CompressedImage(header=self.latest_header, format="jpeg", data=jpeg_data)
             self.image_pub.publish(compressed_msg)
@@ -284,25 +324,43 @@ def main():
     node = None
     try:
         node = ImagePublisher()
+        # A MultiThreadedExecutor allows timer callbacks to run in parallel, which is
+        # useful for separating high-rate capture from slower processing.
+        # With the callback groups defined in the node, this executor can now
+        # run the image capture, compression, and parameter services concurrently
+        # without them blocking each other.
         executor = MultiThreadedExecutor()
         executor.add_node(node)
+        
+        # executor.spin() is a blocking call that processes callbacks until shutdown.
         executor.spin()
-    except (RuntimeError, ExternalShutdownException, KeyboardInterrupt) as e:
-        if node and isinstance(e, RuntimeError):
-            node.get_logger().fatal(f"Node critical failure: {e}")
-        elif not node:
-             print(f"Critical error during node instantiation: {e}")
-    except Exception as e:
+
+    except (KeyboardInterrupt, ExternalShutdownException):
+        # This is the expected path for a clean shutdown (e.g., Ctrl+C).
+        # No error message needed as this is a normal exit.
+        pass
+    except Exception:
+        # This will catch any other exception that causes the node to crash,
+        # including errors during initialization.
         if node:
-            node.get_logger().exception(f"Unhandled exception in main: {e}")
+            # If the node was created, use its logger.
+            node.get_logger().fatal("Unhandled exception in node execution:", exc_info=True)
         else:
-            print(f"Unhandled exception in main before node init: {e}")
+            # If node creation failed, print to console.
+            print("Unhandled exception during node setup:")
             traceback.print_exc()
     finally:
+        # This block ensures that cleanup happens regardless of how the try block exits.
         if node:
+            node.get_logger().info("Shutting down node and cleaning up resources.")
+            # Custom cleanup must be called before the node is destroyed.
             node.destroy_node_custom()
-            if rclpy.ok(): node.destroy_node()
-        if rclpy.ok(): rclpy.try_shutdown()
+            if rclpy.ok():
+                node.destroy_node()
+        
+        # Finally, shutdown the rclpy context.
+        if rclpy.ok():
+            rclpy.shutdown()
 
 if __name__ == '__main__':
     main()

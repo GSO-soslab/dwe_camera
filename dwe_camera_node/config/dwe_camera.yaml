@@ -14,7 +14,7 @@
     compression:
       width: 320
       height: 240
-      target_fps: 5.0 # Should be <= video.framerate
+      target_fps: 0 # Should be <= video.framerate
       jpeg_quality: 75
 
     # Camera hardware control settings
@@ -32,4 +32,3 @@
     # ROS-specific settings
     ros:
       frame_id: "dwe_camera_frame" # A more descriptive default frame_id
-      settings_publish_rate: 1.0      # Rate in Hz to publish current camera settings

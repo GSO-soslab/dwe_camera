@@ -19,18 +19,27 @@
     ```
 
 ### Dependencies
+This package now uses OpenCV's V4L2 backend to capture JPEG streams directly, removing the need for GStreamer.
+
 - All Ubuntu / Debian-based systems (including Raspberry Pi):
     
     **Python Packages (pip)**
+    The recommended way to install OpenCV for Python is via pip:
     ```bash
     pip3 install opencv-python
+    pip3 insall empy
+    pip3 insatll catkin_pkg
+    pip3 install numpy
+    pip3 install lark
+
     ```
     (Note: `cv_bridge` is a standard ROS package and should be installed via `rosdep` or `sudo apt install ros-<distro>-cv-bridge`, not pip).
 
     **System Libraries (apt)**
-    These are required for camera interaction (v4l) and direct, efficient JPEG streaming (GStreamer).
     ```bash
-    sudo apt install v4l-utils python3-gi gir1.2-gstreamer-1.0 gir1.2-gst-plugins-base-1.0
+    sudo apt install v4l-utils
+    sudo apt install ros-<distro>-cv-bridge
+    sudo apt install ros-<distro>-compressed-image-transport
     ```
 
 - Raspberry Pi also requires:

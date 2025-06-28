@@ -6,7 +6,7 @@ int8 hue                                    #[-40, 40, 0]
 uint16 gamma                                #[72, 500, 100]
 uint8 gain                                  #[0, 100, 0]
 uint8 sharpness                             #[0, 6, 3]
-uint16 exposure                             #[1, 5000, 156]
+uint16 exposure_time                        #[1, 5000, 156]
 
 # Not Supported in OpenCV
 #std_msgs/Bool white_balance_automatic       #[0, 1]
