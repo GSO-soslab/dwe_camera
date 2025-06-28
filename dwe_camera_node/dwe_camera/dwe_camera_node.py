@@ -6,6 +6,8 @@ import cv2
 import numpy as np
 import traceback
 import time
+import threading
+import copy
 
 from std_msgs.msg import Header
 from sensor_msgs.msg import CompressedImage
@@ -51,14 +53,21 @@ class ImagePublisher(Node):
         self.get_logger().info("Using separate callback groups for camera timers to ensure parameter services remain responsive.")
         self.image_capture_cb_group = MutuallyExclusiveCallbackGroup()
         self.compression_cb_group = MutuallyExclusiveCallbackGroup()
+        self.cam_setting_cb_group = MutuallyExclusiveCallbackGroup()
+
         # The parameter callback will automatically use the default group.
+
+        # --- Threading and State Management for Settings ---
+        self.settings_lock = threading.Lock()
+        self.pending_settings_publication = False
+        self.cam_settings_msg = CamParameters() # Cached message for periodic publishing
 
         self.v4l2_camera = None
         self.latest_raw_frame = None
         self.latest_header = Header()
         self.raw_image_timer = None
         self.compressed_image_timer = None
-        self.initial_settings_timer = None
+        self.cam_settings_timer = None
 
         # List of camera control parameter names. The V4L2Camera class handles the mapping.
         self.camera_control_params = [
@@ -85,7 +94,7 @@ class ImagePublisher(Node):
         self.get_logger().info("Executing resource cleanup...")
         if self.raw_image_timer: self.raw_image_timer.cancel()
         if self.compressed_image_timer: self.compressed_image_timer.cancel()
-        if self.initial_settings_timer: self.initial_settings_timer.cancel()
+        if self.cam_settings_timer: self.cam_settings_timer.cancel()
         if self.v4l2_camera: self.v4l2_camera.release()
 
     def setup_params(self):
@@ -166,6 +175,10 @@ class ImagePublisher(Node):
         self.CAM_FPS = self.v4l2_camera.fps
         self.get_logger().info("V4L2 camera initialized successfully via OpenCV.")
 
+        # Publish initial camera settings and cache them for periodic updates.
+        self.update_and_publish_settings()
+        self.get_logger().info("Published initial camera settings and cached for periodic updates.")
+
     def get_current_controls_from_params(self, new_params=[]):
         """
         Constructs a dictionary of camera control values based on current
@@ -201,7 +214,6 @@ class ImagePublisher(Node):
         self.image_pub = self.create_publisher(CompressedImage, "image/compressed", 10)
         self.compressed_image_pub = self.create_publisher(CompressedImage, "image_lowbw/compressed", 10)
         self.cam_settings_pub = self.create_publisher(CamParameters, "camera_settings", 10)
-        self.cam_settings_msg = CamParameters()
 
     def setup_timers(self):
         if self.CAM_FPS > 0:
@@ -221,85 +233,121 @@ class ImagePublisher(Node):
                 self.compressed_image_callback,
                 callback_group=self.compression_cb_group)
         
-        self.publish_initial_settings_once()
-        
-    def publish_initial_settings_once(self):
-        """
-        A one-shot callback that publishes the camera's initial settings and then
-        disables its own timer.
-        """
-        self.get_logger().info("Publishing initial camera settings...")
-        try:
-            self.publish_current_settings()
-        except Exception as e:
-            self.get_logger().error(f"Failed to publish initial settings: {e}", exc_info=True)
+        self.cam_settings_timer = self.create_timer(
+            1.0,
+            self.camera_settings_callback,
+            callback_group=self.cam_setting_cb_group
+        )
         
     def parameters_callback(self, params):
         """Applies changed ROS parameters to the camera."""
         self.get_logger().info("Parameter callback triggered!")
-        # Because non-camera parameters are read-only, this callback will only
-        # be triggered for 'camera.*' parameter changes.
         controls_to_set = self.get_current_controls_from_params(params)
         
         self.get_logger().info(f"Applying new camera parameter set: {controls_to_set}")
         if self.v4l2_camera:
             self.v4l2_camera.set_controls(controls_to_set)
         
-        # Publish the updated settings immediately after applying them
-        self.publish_current_settings()
+        # Instead of publishing immediately, set a flag to sync with the next frame.
+        with self.settings_lock:
+            self.pending_settings_publication = True
+        self.get_logger().info("Settings changed. Awaiting next frame to publish synchronized status.")
+        
         return SetParametersResult(successful=True)
 
-    def publish_current_settings(self):
+    def update_and_publish_settings(self, header_to_use=None):
         """
-        Queries the camera for its actual current settings and publishes them.
-        This provides the ground truth of the camera's state.
+        Queries camera for actual settings, publishes them, and updates the node's
+        internal cached message. This is the sole method for querying hardware.
+        If a header is provided, it's used for timestamp synchronization.
         """
-
         if not self.v4l2_camera:
-            self.get_logger().warn("Cannot publish settings, camera not initialized.")
+            self.get_logger().warn("Cannot update settings, camera not initialized.")
             return
 
-        # Get the actual settings directly from the camera hardware
         try:
             current_controls = self.v4l2_camera.get_all_controls()
         except Exception as e:
             self.get_logger().error(f"Failed to get camera controls: {e}", exc_info=True)
             return
 
-        header = Header(stamp=self.get_clock().now().to_msg(), frame_id=self.latest_header.frame_id)
-        self.cam_settings_msg.header = header
+        # Create a new message instance for this publication.
+        settings_msg = CamParameters()
         
-        # Populate the message with values read from the camera. Use .get() for safety.
-        # The key from get_all_controls is 'auto_exposure' and its value is the V4L2 constant (1 or 3)
-        self.cam_settings_msg.auto_exposure = current_controls.get('auto_exposure', 0)
+        if header_to_use:
+            settings_msg.header = header_to_use
+        else:
+            settings_msg.header = Header(stamp=self.get_clock().now().to_msg(), frame_id=self.latest_header.frame_id)
         
-        # The key from get_all_controls is 'exposure_time'
-        self.cam_settings_msg.exposure_time = current_controls.get('exposure_time', 0)
+        # Populate the message from hardware
+        settings_msg.auto_exposure = current_controls.get('auto_exposure', 0)
+        settings_msg.exposure_time = current_controls.get('exposure_time', 0)
+        settings_msg.brightness = current_controls.get('brightness', 0)
+        settings_msg.contrast = current_controls.get('contrast', 0)
+        settings_msg.saturation = current_controls.get('saturation', 0)
+        settings_msg.hue = current_controls.get('hue', 0)
+        settings_msg.gamma = current_controls.get('gamma', 0)
+        settings_msg.gain = current_controls.get('gain', 0)
+        settings_msg.sharpness = current_controls.get('sharpness', 0)
+        settings_msg.video_format = self.get_parameter('video.format').value
         
-        self.cam_settings_msg.brightness = current_controls.get('brightness', 0)
-        self.cam_settings_msg.contrast = current_controls.get('contrast', 0)
-        self.cam_settings_msg.saturation = current_controls.get('saturation', 0)
-        self.cam_settings_msg.hue = current_controls.get('hue', 0)
-        self.cam_settings_msg.gamma = current_controls.get('gamma', 0)
-        self.cam_settings_msg.gain = current_controls.get('gain', 0)
-        self.cam_settings_msg.sharpness = current_controls.get('sharpness', 0)
-        
-        # This value is static and comes from parameters, not read from camera.
-        self.cam_settings_msg.video_format = self.get_parameter('video.format').value
+        # Publish the freshly queried settings.
+        self.cam_settings_pub.publish(settings_msg)
 
-        self.cam_settings_pub.publish(self.cam_settings_msg)
+        # Atomically update the shared cache for the periodic timer.
+        with self.settings_lock:
+            self.cam_settings_msg = settings_msg
+
+    def camera_settings_callback(self):
+        """
+        Periodically publishes the last known camera settings at 1Hz.
+        It does NOT query the camera hardware, making it very lightweight.
+        It reuses the cached self.cam_settings_msg.
+        """
+        with self.settings_lock:
+            # If the cache hasn't been populated yet, do nothing.
+            if not hasattr(self, 'cam_settings_msg') or not self.cam_settings_msg.video_format:
+                return
+            # Make a deep copy to ensure thread safety. We will modify the header
+            # of the copy before publishing, leaving the cached original untouched.
+            msg_to_publish = copy.deepcopy(self.cam_settings_msg)
+
+        # Update the header with a new timestamp for this specific publication.
+        msg_to_publish.header.stamp = self.get_clock().now().to_msg()
+        self.cam_settings_pub.publish(msg_to_publish)
 
     def raw_image_capture_callback(self):
         if not (self.v4l2_camera and self.v4l2_camera.is_opened()): return
-        self.latest_header.stamp = self.get_clock().now().to_msg()
+        
+        # Create a header for this frame capture event. It will be used for both
+        # the image and, if necessary, the synchronized settings message.
+        header = Header(stamp=self.get_clock().now().to_msg(), frame_id=self.latest_header.frame_id)
+        
         jpeg_data = self.v4l2_camera.read_jpeg()
+        
         if jpeg_data:
-            compressed_msg = CompressedImage(header=self.latest_header, format="jpeg", data=jpeg_data)
+            # Check if a settings update is pending and publish it with this frame's header.
+            is_pending = False
+            with self.settings_lock:
+                if self.pending_settings_publication:
+                    is_pending = True
+                    self.pending_settings_publication = False
+            
+            if is_pending:
+                self.get_logger().info(f"Publishing synchronized settings with timestamp: {header.stamp.sec}.{header.stamp.nanosec}")
+                # This queries HW, publishes, and updates the cache.
+                self.update_and_publish_settings(header_to_use=header)
+
+            # Publish the image itself.
+            compressed_msg = CompressedImage(header=header, format="jpeg", data=jpeg_data)
             self.image_pub.publish(compressed_msg)
+            
+            # If the low-bandwidth stream is active, decode the frame for it.
             if self.compressed_image_timer and not self.compressed_image_timer.is_canceled():
                 try:
                     self.latest_raw_frame = cv2.imdecode(np.frombuffer(jpeg_data, np.uint8), cv2.IMREAD_COLOR)
-                except cv2.error: self.latest_raw_frame = None
+                except cv2.error: 
+                    self.latest_raw_frame = None
 
     def compressed_image_callback(self):
         if self.latest_raw_frame is None: return

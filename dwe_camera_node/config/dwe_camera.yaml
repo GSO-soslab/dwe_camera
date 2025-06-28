@@ -4,17 +4,17 @@
   ros__parameters:
     # Video stream settings
     video:
-      id: 2
+      id: 0
       width: 1920
       height: 1080
       framerate: 15
       format: 'MJPG' # More common than h264 for direct cv2 use
 
-    # Settings for the low-bandwidth compressed stream
+    # Settings for the low-bandwidth compressed stream (0 target_fps will disable this topic)
     compression:
       width: 320
       height: 240
-      target_fps: 0 # Should be <= video.framerate
+      target_fps: 5 # Should be <= video.framerate
       jpeg_quality: 75
 
     # Camera hardware control settings
