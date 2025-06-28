@@ -5,8 +5,8 @@
     # Video stream settings
     video:
       id: 0
-      width: 1280
-      height: 720
+      width: 640
+      height: 360
       framerate: 15
       format: 'MJPG'
     # Settings for the low-bandwidth compressed stream (0 target_fps will disable this topic)
@@ -35,8 +35,8 @@
     # Video stream settings
     video:
       id: 4
-      width: 1280
-      height: 720
+      width: 640
+      height: 360
       framerate: 15
       format: 'MJPG'
     # Settings for the low-bandwidth compressed stream (0 target_fps will disable this topic)
