@@ -61,6 +61,7 @@ class ImagePublisher(Node):
         self.settings_lock = threading.Lock()
         self.pending_settings_publication = False
         self.cam_settings_msg = CamParameters() # Cached message for periodic publishing
+        self.supported_controls = {} # To store which controls the hardware supports
 
         self.v4l2_camera = None
         self.latest_raw_frame = None
@@ -83,7 +84,10 @@ class ImagePublisher(Node):
             self.setup_params()
             self.setup_ros_elements()
             self.setup_cam()
-            self.setup_timers() # Timers now handle initial publication
+            self.set_unsupported_params_to_readonly()
+            # Register callback AFTER all parameters are finalized (including read-only updates)
+            self.add_on_set_parameters_callback(self.parameters_callback)
+            self.setup_timers()
             self.get_logger().info("DWE Camera Node successfully initialized using OpenCV for direct V4L2 access.")
         except Exception as e:
             self.get_logger().error(f"Error during node initialization: {e}", exc_info=True)
@@ -152,8 +156,6 @@ class ImagePublisher(Node):
         self.declare_parameter('camera.sharpness', 3, sharpness_descriptor)
         self.declare_parameter('camera.auto_exposure', True, auto_exposure_descriptor)
         self.declare_parameter('camera.exposure_time', 156, exposure_descriptor)
-        
-        self.add_on_set_parameters_callback(self.parameters_callback)
 
     def setup_cam(self):
         """Initializes the V4L2Camera with settings from ROS parameters."""
@@ -175,9 +177,51 @@ class ImagePublisher(Node):
         self.CAM_FPS = self.v4l2_camera.fps
         self.get_logger().info("V4L2 camera initialized successfully via OpenCV.")
 
+        # Get and store hardware support info
+        self.supported_controls = self.v4l2_camera.get_supported_controls()
+        self.get_logger().info(f"Hardware control support map: {self.supported_controls}")
+
         # Publish initial camera settings and cache them for periodic updates.
         self.update_and_publish_settings()
         self.get_logger().info("Published initial camera settings and cached for periodic updates.")
+
+    def set_unsupported_params_to_readonly(self):
+        """
+        Re-declares parameters for unsupported controls as read-only.
+        This provides a better user experience in tools like RQT Reconfigure,
+        as it prevents users from trying to change values that have no effect.
+        """
+        # This map holds functions that create fresh descriptors for our controls.
+        # This is necessary because we must undeclare and then redeclare the parameter.
+        descriptor_map = {
+            'brightness': ParameterDescriptor(description='Image brightness [-64, 64]', integer_range=[IntegerRange(from_value=-64, to_value=64, step=1)]),
+            'contrast': ParameterDescriptor(description='Image contrast [0, 64]', integer_range=[IntegerRange(from_value=0, to_value=64, step=1)]),
+            'saturation': ParameterDescriptor(description='Image saturation [0, 128]', integer_range=[IntegerRange(from_value=0, to_value=128, step=1)]),
+            'hue': ParameterDescriptor(description='Image hue [-40, 40]', integer_range=[IntegerRange(from_value=-40, to_value=40, step=1)]),
+            'gamma': ParameterDescriptor(description='Image gamma [72, 500]', integer_range=[IntegerRange(from_value=72, to_value=500, step=1)]),
+            'gain': ParameterDescriptor(description='Image gain [0, 100]', integer_range=[IntegerRange(from_value=0, to_value=100, step=1)]),
+            'sharpness': ParameterDescriptor(description='Image sharpness [0, 6]', integer_range=[IntegerRange(from_value=0, to_value=6, step=1)]),
+            'auto_exposure': ParameterDescriptor(description='Enable/disable auto exposure'),
+            'exposure_time': ParameterDescriptor(description='Exposure time [1, 5000]. Used when auto_exposure is False.', integer_range=[IntegerRange(from_value=1, to_value=5000, step=1)])
+        }
+
+        for control_name in self.camera_control_params:
+            if not self.supported_controls.get(control_name, False):
+                param_full_name = f'camera.{control_name}'
+                self.get_logger().warn(f"Control '{control_name}' is not supported by this camera. Setting its ROS parameter to read-only.")
+
+                try:
+                    current_value = self.get_parameter(param_full_name).value
+                    new_descriptor = descriptor_map[control_name]
+                    new_descriptor.read_only = True # Modify the descriptor to be read-only
+
+                    self.undeclare_parameter(param_full_name)
+                    self.declare_parameter(param_full_name, current_value, new_descriptor)
+                except KeyError:
+                    # This should not happen if camera_control_params and descriptor_map are in sync
+                    self.get_logger().error(f"Internal error: No descriptor found for '{control_name}' while setting read-only status.")
+                except Exception as e:
+                    self.get_logger().error(f"Failed to set parameter '{param_full_name}' to read-only: {e}")
 
     def get_current_controls_from_params(self, new_params=[]):
         """

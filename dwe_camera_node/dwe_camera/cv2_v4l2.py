@@ -121,6 +121,38 @@ class V4L2Camera:
                     current_controls[name] = int(value)
             return current_controls
 
+    def get_supported_controls(self):
+        """
+        Checks which camera controls are supported by the hardware.
+        A control is considered supported if querying it returns a non-negative value.
+        Returns a dictionary mapping control names to a boolean (True if supported).
+        """
+        with self.lock:
+            supported_controls = {}
+            if not self.is_opened():
+                self.logger.warn("Cannot check for supported controls, camera is not open. Returning all as unsupported.")
+                # Populate with known keys, mapping to False
+                for name in self.CV_PROP_MAP.keys():
+                    ros_name = 'exposure_time' if name == 'exposure_absolute' else name
+                    supported_controls[ros_name] = False
+                return supported_controls
+
+            for name, prop_id in self.CV_PROP_MAP.items():
+                value = self.cap.get(prop_id)
+                is_supported = (value is not None and value >= 0)
+                
+                # Remap keys to match ROS parameter names
+                ros_name = 'exposure_time' if name == 'exposure_absolute' else name
+                supported_controls[ros_name] = is_supported
+            
+            # Special case: exposure_time is only meaningful if auto_exposure can be turned off.
+            # If auto_exposure control itself isn't supported, manual exposure_time is also not supported.
+            if not supported_controls.get('auto_exposure', False):
+                if 'exposure_time' in supported_controls:
+                    self.logger.info("Auto-exposure control not supported; disabling manual exposure time parameter as well.")
+                    supported_controls['exposure_time'] = False
+            return supported_controls
+
     def read_jpeg(self):
         """
         Reads a frame from the camera. Since CAP_PROP_CONVERT_RGB is false,
