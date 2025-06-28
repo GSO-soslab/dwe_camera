@@ -1,34 +1,34 @@
-# Default parameters for the dwe_camera_node.
-# This file no longer contains the top-level node name, making it reusable.
-ros__parameters:
-  # Video stream settings
-  video:
-    id: 2
-    width: 1920
-    height: 1080
-    framerate: 10
-    format: 'MJPG' # More common than h264 for direct cv2 use
+# Parameters for a single dwe_camera_node instance.
+# The top-level key matches the full node name: /{namespace}/{node_name}
+/mini_alpha/dwe_camera_node:
+  ros__parameters:
+    # Video stream settings
+    video:
+      id: 0
+      width: 1920
+      height: 1080
+      framerate: 15
+      format: 'MJPG' # More common than h264 for direct cv2 use
 
-  # Settings for the low-bandwidth compressed stream
-  compression:
-    width: 320
-    height: 240
-    target_fps: 5 # Should be <= video.framerate
-    jpeg_quality: 75
+    # Settings for the low-bandwidth compressed stream (0 target_fps will disable this topic)
+    compression:
+      width: 320
+      height: 240
+      target_fps: 5 # Should be <= video.framerate
+      jpeg_quality: 75
 
-  # Camera hardware control settings
-  camera:
-    auto_exposure: True   # True for auto, False for manual
-    exposure_time: 156    # Absolute exposure time (used if auto_exposure is False)
-    brightness: 0
-    contrast: 32
-    saturation: 64
-    hue: 0
-    gamma: 100
-    gain: 0
-    sharpness: 3
+    # Camera hardware control settings
+    camera:
+      auto_exposure: True   # True for auto, False for manual
+      exposure_time: 156    # Absolute exposure time (used if auto_exposure is False)
+      brightness: 0
+      contrast: 32
+      saturation: 64
+      hue: 0
+      gamma: 100
+      gain: 0
+      sharpness: 3
 
-  # ROS-specific settings
-  ros:
-    frame_id: "dwe_camera_frame" # A more descriptive default frame_id
-    param_update_rate: 1.0       # Rate in Hz to check for parameter updates
+    # ROS-specific settings
+    ros:
+      frame_id: "dwe_camera_frame" # A more descriptive default frame_id

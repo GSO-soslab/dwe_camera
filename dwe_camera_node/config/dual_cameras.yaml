@@ -2,18 +2,20 @@
 # exploreHD camera
 /dwe_camera/exploreHD_camera_node:
   ros__parameters:
+    # Video stream settings
     video:
-      id: 2
+      id: 0
       width: 1280
       height: 720
       framerate: 15
       format: 'MJPG'
-      jpeg_quality_recompress: 95
+    # Settings for the low-bandwidth compressed stream (0 target_fps will disable this topic)
     compression:
       width: 320
       height: 240
       target_fps: 0
       jpeg_quality: 75
+    # Camera hardware control settings
     camera:
       auto_exposure: True
       exposure_time: 156
@@ -26,23 +28,24 @@
       sharpness: 3
     ros:
       frame_id: "exploreHD_camera_frame" # Unique TF frame_id
-      param_update_rate: 15.0
 
 # usbpcb camera
 /dwe_camera/usbpcb_camera_node:
   ros__parameters:
+    # Video stream settings
     video:
-      id: 6
+      id: 4
       width: 1280
       height: 720
       framerate: 15
       format: 'MJPG'
-      jpeg_quality_recompress: 95
+    # Settings for the low-bandwidth compressed stream (0 target_fps will disable this topic)
     compression:
       width: 320
       height: 240
       target_fps: 0
       jpeg_quality: 75
+    # Camera hardware control settings
     camera:
       auto_exposure: True
       exposure_time: 156
@@ -55,5 +58,3 @@
       sharpness: 3
     ros:
       frame_id: "usbpcb_camera_frame" # Unique TF frame_id
-      param_update_rate: 15.0
-
