@@ -94,17 +94,21 @@ class V4L2Camera:
         """
         Gets the current values of all supported camera controls from the hardware
         and returns them in a dictionary with node-friendly keys.
+        If a control is not supported by the camera, it will be included with a value of 0.
         """
         with self.lock:
             current_controls = {}
             if not self.is_opened():
-                self.logger.warn("Cannot get controls, camera is not open.")
-                return current_controls
+                self.logger.warn("Cannot get controls, camera is not open. Will return default values.")
             
             for name, prop_id in self.CV_PROP_MAP.items():
                 value = self.cap.get(prop_id)
-                if value is None or value < 0: # Some drivers return -1 for unsupported controls
-                    continue
+
+                # If control is not supported (returns -1 or None), default to 0.
+                # This also handles the case where the camera is not open, as cap.get()
+                # will typically return 0.0 or -1 in that situation.
+                if value is None or value < 0:
+                    value = 0
 
                 # Remap keys and values to match ROS parameter names and types where needed.
                 if name == 'auto_exposure':
