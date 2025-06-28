@@ -92,33 +92,43 @@ class V4L2Camera:
 
     def get_all_controls(self):
         """
-        Gets the current values of all supported camera controls from the hardware
-        and returns them in a dictionary with node-friendly keys.
-        If a control is not supported by the camera, it will be included with a value of 0.
+        Gets the current values of all camera controls from the hardware and returns
+        them in a dictionary with node-friendly keys.
+        If a control is not supported by the camera or an error occurs while querying it,
+        it will be included with a value of 0. This method guarantees that all controls
+        corresponding to CV_PROP_MAP have a key in the returned dictionary.
         """
         with self.lock:
+            # Initialize with default values for all controls using ROS-friendly names,
+            # derived from CV_PROP_MAP to stay in sync.
             current_controls = {}
+            for name in self.CV_PROP_MAP.keys():
+                ros_name = 'exposure_time' if name == 'exposure_absolute' else name
+                current_controls[ros_name] = 0
+
             if not self.is_opened():
-                self.logger.warn("Cannot get controls, camera is not open. Will return default values.")
-            
+                self.logger.warn("Cannot get controls, camera is not open. Returning default zero-values.")
+                return current_controls
+
             for name, prop_id in self.CV_PROP_MAP.items():
-                value = self.cap.get(prop_id)
+                try:
+                    value = self.cap.get(prop_id)
 
-                # If control is not supported (returns -1 or None), default to 0.
-                # This also handles the case where the camera is not open, as cap.get()
-                # will typically return 0.0 or -1 in that situation.
-                if value is None or value < 0:
-                    value = 0
+                    # A supported control should return a non-negative value.
+                    if value is not None and value >= 0:
+                        if name == 'auto_exposure':
+                            current_controls['auto_exposure'] = int(value)
+                        elif name == 'exposure_absolute':
+                            current_controls['exposure_time'] = int(value)
+                        else:
+                            current_controls[name] = int(value)
+                    # If unsupported (value < 0 or None), we do nothing, leaving the default of 0.
 
-                # Remap keys and values to match ROS parameter names and types where needed.
-                if name == 'auto_exposure':
-                    # OpenCV's V4L2 backend returns 3 for AUTO and 1 for MANUAL.
-                    current_controls['auto_exposure'] = int(value)
-                elif name == 'exposure_absolute':
-                    # Remap 'exposure_absolute' to 'exposure_time' to match the ROS parameter.
-                    current_controls['exposure_time'] = int(value)
-                else:
-                    current_controls[name] = int(value)
+                except Exception as e:
+                    ros_name = 'exposure_time' if name == 'exposure_absolute' else name
+                    self.logger.error(f"Error getting camera control '{ros_name}': {e}. Using default value of 0.")
+                    # The value is already 0 from initialization, so we just log and continue.
+            
             return current_controls
 
     def get_supported_controls(self):
