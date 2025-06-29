@@ -1,0 +1,68 @@
+# Parameters for a single dwe_camera_node instance.
+# The top-level key matches the full node name: /{namespace}/{node_name}
+/mini_alpha/dwe_camera_node:
+  ros__parameters:
+    # Apriltag Parameters:
+    apriltag:
+      enable: True        # Set to True to enable AprilTag detection
+      family: 'tag25h9'   # The family of tags to detect (e.g., 'tag36h11', 'tag25h9', 'tag16h5')
+      size: 0.156          # The size of the tag's black square in meters
+      publish_rate: 1     # Rate (Hz) to publish the detection image topic
+
+      # --- NEW: Tunable parameters for the ArUco detector ---
+      # These parameters are now read-only after startup. To change them,
+      # you must edit this file and restart the node.
+      detector:
+        # Adaptive Thresholding is key for handling lighting changes.
+        # It slides a window across the image to set a local black/white threshold.
+        # If lighting is uneven, making this window smaller can help a lot.
+        # Min window size. Must be >= 3.
+        adaptive_thresh_win_size_min: 3
+        # Max window size. A good starting point is 23. Try decreasing to 15 or 9 for tricky lighting.
+        adaptive_thresh_win_size_max: 23
+        # Step size between min and max.
+        adaptive_thresh_win_size_step: 4
+        # Constant subtracted from the mean. Can be adjusted, but usually not the first thing to change.
+        adaptive_thresh_constant: 7.0
+        # The percentage of bits that can be wrong but still corrected. Default is 0.6.
+        error_correction_rate: 0.6
+
+
+    # Video stream settings
+    video:
+      id: 2
+      width: 1920
+      height: 1080
+      framerate: 15
+      format: 'MJPG' 
+      img_raw: False
+
+    # Settings for the low-bandwidth compressed stream (0 target_fps will disable this topic)
+    compression:
+      target_fps: 0 
+      jpeg_quality: 90
+
+    # Camera hardware control settings
+    camera:
+      auto_exposure: True   # True for auto, False for manual
+      exposure_time: 156    # Absolute exposure time (used if auto_exposure is False)
+      brightness: 0
+      contrast: 32
+      saturation: 64
+      hue: 0
+      gamma: 100
+      gain: 0
+      sharpness: 3
+      # --- Camera Intrinsics (REQUIRED for pose estimation) ---
+      # These values must be calibrated for your specific camera.
+      intrinsics:
+        fx: 956.137817
+        fy: 959.569259
+        cx: 976.928226
+        cy: 572.032605
+      # Distortion coefficients: [k1, k2, p1, p2, k3]. Ensure you have 5 values.
+      distortion: [-0.297061, 0.057794, -0.000599, 0.000735, 0.0]
+
+    # ROS-specific settings
+    ros:
+      frame_id: "dwe_camera_frame"
