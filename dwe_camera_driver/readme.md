@@ -1,4 +1,4 @@
-# dwe_camera_node/readme.md
+# dwe_camera_driver/readme.md
 ### Some Useful Commands
 
 - rqt dynamic reconfigure gui

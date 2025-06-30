@@ -3,7 +3,7 @@ import numpy as np
 import time
 import threading
 
-class V4L2Camera:
+class CameraDevice:
     """
     A class to interface with a V4L2 camera using OpenCV's VideoCapture
     configured to capture the raw, hardware-encoded JPEG stream directly.

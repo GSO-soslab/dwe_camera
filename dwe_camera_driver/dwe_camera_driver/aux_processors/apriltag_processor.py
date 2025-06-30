@@ -1,5 +1,11 @@
+import rclpy
 import cv2
 import numpy as np
+import threading
+
+from std_msgs.msg import Header
+from sensor_msgs.msg import CompressedImage
+
 from scipy.spatial.transform import Rotation as R
 from pupil_apriltags import Detector
 
@@ -142,3 +148,97 @@ class AprilTagDetector:
                             cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
                             
         return image
+    
+class AprilTagProcessor:
+    """
+    An auxiliary processor for detecting AprilTags. It initializes the detector,
+    runs detection on its own timer, and publishes the annotated image.
+    """
+    def __init__(self, parent_node: rclpy.node.Node, callback_group):
+        """
+        Initializes the AprilTag processor.
+        
+        :param parent_node: The main camera node.
+        :param callback_group: The ROS 2 callback group for the timer.
+        """
+        self._node = parent_node
+        self._logger = self._node.get_logger().get_child('apriltag_processor')
+        
+        # Get AprilTag parameters
+        publish_rate = self._node.get_parameter('apriltag.publish_rate').value
+        tag_family = self._node.get_parameter('apriltag.family').value
+        tag_size = self._node.get_parameter('apriltag.size').value
+        self._jpeg_quality = int(self._node.get_parameter('compression.jpeg_quality').value)
+        
+        camera_intrinsics = {
+            'fx': self._node.get_parameter('camera.intrinsics.fx').value,
+            'fy': self._node.get_parameter('camera.intrinsics.fy').value,
+            'cx': self._node.get_parameter('camera.intrinsics.cx').value,
+            'cy': self._node.get_parameter('camera.intrinsics.cy').value
+        }
+        camera_distortion = self._node.get_parameter('camera.distortion').value
+        image_size = {
+            'img_width': self._node.get_parameter('video.width').value,
+            'img_height': self._node.get_parameter('video.height').value
+        }
+        detector_params = {
+            'nthreads': self._node.get_parameter('apriltag.detector.nthreads').value,
+            'quad_decimate': self._node.get_parameter('apriltag.detector.quad_decimate').value,
+            'quad_sigma': self._node.get_parameter('apriltag.detector.quad_sigma').value,
+            'refine_edges': self._node.get_parameter('apriltag.detector.refine_edges').value,
+            'decode_sharpening': self._node.get_parameter('apriltag.detector.decode_sharpening').value,
+        }
+
+        # Initialize the actual AprilTag detector logic
+        self._detector = AprilTagDetector(
+            family=tag_family,
+            tag_size=tag_size,
+            camera_intrinsics=camera_intrinsics,
+            camera_distortion=camera_distortion,
+            image_size=image_size,
+            logger=self._logger,
+            detector_params=detector_params
+        )
+
+        self._frame_lock = threading.Lock()
+        self._latest_frame = None
+        self._frame_id = self._node.get_parameter('ros.frame_id').value
+
+        # Create ROS publisher and timer
+        self._publisher = self._node.create_publisher(CompressedImage, "apriltag_detection/compressed", 10)
+        self._timer = self._node.create_timer(
+            1.0 / publish_rate,
+            self._timer_callback,
+            callback_group=callback_group
+        )
+        self._logger.info(f"Initialized. Publishing detection results at {publish_rate} Hz.")
+
+    def update_frame(self, frame: np.ndarray):
+        """Receives a new, decoded frame from the main capture loop."""
+        with self._frame_lock:
+            self._latest_frame = frame
+
+    def _timer_callback(self):
+        """Periodically runs detection and publishes the result."""
+        with self._frame_lock:
+            if self._latest_frame is None:
+                return
+            frame_to_process = self._latest_frame.copy()
+
+        # Perform detection and get the annotated image
+        annotated_image = self._detector.detect_and_draw(frame_to_process)
+        
+        if annotated_image is not None:
+            # Compress the annotated image for publishing
+            encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), self._jpeg_quality]
+            result, encimg = cv2.imencode('.jpg', annotated_image, encode_param)
+            
+            if result:
+                header = Header(stamp=self._node.get_clock().now().to_msg(), frame_id=self._frame_id)
+                msg = CompressedImage(header=header, format="jpeg", data=encimg.tobytes())
+                self._publisher.publish(msg)
+
+    def shutdown(self):
+        """Cancels the timer to cleanly shut down the processor."""
+        self._logger.info("Shutting down.")
+        if self._timer: self._timer.cancel()

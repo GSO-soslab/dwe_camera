@@ -5,17 +5,16 @@ from launch_ros.actions import Node
 
 def generate_launch_description():
     """
-    Launch file to run two instances of the dwe_camera_node for two cameras,
+    Launch file to run two instances of the camera_node for two cameras,
     with remappings to ensure topics are unique.
     """
-    # The package name is 'dwe_camera' as defined in setup.py
-    dwe_camera_pkg_share = get_package_share_directory('dwe_camera')
+    pkg_share = get_package_share_directory('dwe_camera_driver')
 
-    dual_camera_params_path = os.path.join(dwe_camera_pkg_share, 'config', 'dual_cameras.yaml')
+    dual_camera_params_path = os.path.join(pkg_share, 'config', 'dual_cameras.yaml')
 
     exploreHD_camera_node = Node(
-        package='dwe_camera',
-        executable='dwe_camera_node',
+        package='dwe_camera_driver',
+        executable='camera_node',
         name='exploreHD_camera_node',
         namespace='dwe_camera',
         output='screen',
@@ -28,8 +27,8 @@ def generate_launch_description():
     )
 
     usbpcb_camera_node = Node(
-        package='dwe_camera',
-        executable='dwe_camera_node',
+        package='dwe_camera_driver',
+        executable='camera_node',
         name='usbpcb_camera_node',
         namespace='dwe_camera',
         output='screen',

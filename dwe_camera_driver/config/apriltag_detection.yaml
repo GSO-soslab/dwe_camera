@@ -1,6 +1,6 @@
-# Parameters for a single dwe_camera_node instance.
+# Parameters for a single camera_node instance for AprilTag detection.
 # The top-level key matches the full node name: /{namespace}/{node_name}
-/mini_alpha/dwe_camera_node:
+/mini_alpha/camera_node:
   ros__parameters:
     # Apriltag Parameters:
     apriltag:
@@ -26,10 +26,9 @@
         # Amount of sharpening to apply to the decoded tag bits. Default is 0.25.
         decode_sharpening: 0.25
 
-
     # Video stream settings
     video:
-      id: 2
+      id: 0
       width: 1920
       height: 1080
       framerate: 15
@@ -38,6 +37,8 @@
 
     # Settings for the low-bandwidth compressed stream (0 target_fps will disable this topic)
     compression:
+      width: 320
+      height: 240
       target_fps: 0 
       jpeg_quality: 90
 

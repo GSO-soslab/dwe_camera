@@ -1,10 +1,10 @@
-# Parameters for a single dwe_camera_node instance.
+# Parameters for a single camera_node instance.
 # The top-level key matches the full node name: /{namespace}/{node_name}
-/mini_alpha/dwe_camera_node:
+/mini_alpha/camera_node:
   ros__parameters:
     # Video stream settings
     video:
-      id: 2
+      id: 0
       width: 1920
       height: 1080
       framerate: 15
