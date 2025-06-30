@@ -3,7 +3,7 @@
 <package format="3">
   <name>dwe_camera_interfaces</name>
   <version>0.1.0</version>
-  <description>dwe camera camera parameter message</description>
+  <description>Interfaces (messages, services, actions) for the dwe_camera_driver package.</description>
   <maintainer email="yweifu@uri.edu">Yuewei</maintainer>
   <license>MIT</license>
 

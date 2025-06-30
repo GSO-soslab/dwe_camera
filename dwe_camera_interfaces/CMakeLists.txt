@@ -8,12 +8,12 @@ find_package(ament_cmake_python REQUIRED)
 # Find ROS IDL generator
 find_package(rosidl_default_generators REQUIRED)
 
-# Find std_msgs, as it's a dependency for CamParameters.msg
+# Find std_msgs, as it's a dependency for CameraSettings.msg
 find_package(std_msgs REQUIRED)
 
 # Generate interfaces (messages, services, actions)
 rosidl_generate_interfaces(${PROJECT_NAME}
-  "msg/CamParameters.msg"
+  "msg/CameraSettings.msg"
   # List other .msg files here if you add more
   DEPENDENCIES std_msgs # Specify dependencies of your .msg files
 )

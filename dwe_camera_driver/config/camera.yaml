@@ -1,6 +1,6 @@
-# Parameters for a single dwe_camera_node instance.
+# Parameters for a single camera_node instance.
 # The top-level key matches the full node name: /{namespace}/{node_name}
-/mini_alpha/dwe_camera_node:
+/dwe_camera/camera_node:
   ros__parameters:
     # Video stream settings
     video:
@@ -9,12 +9,13 @@
       height: 1080
       framerate: 15
       format: 'MJPG' # More common than h264 for direct cv2 use
+      img_raw: False # publish to topic image_raw
 
     # Settings for the low-bandwidth compressed stream (0 target_fps will disable this topic)
     compression:
       width: 320
       height: 240
-      target_fps: 5 # Should be <= video.framerate
+      target_fps: 0 # Should be <= video.framerate
       jpeg_quality: 75
 
     # Camera hardware control settings

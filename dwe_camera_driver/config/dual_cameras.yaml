@@ -1,6 +1,6 @@
 # IMPORTANT: Check v4l2-ctl --list-devices for correct ID
 # exploreHD camera
-/dwe_camera/exploreHD_camera_node:
+/mini_alpha/exploreHD_camera_node:
   ros__parameters:
     # Video stream settings
     video:
@@ -13,8 +13,8 @@
     compression:
       width: 320
       height: 240
-      target_fps: 0
-      jpeg_quality: 75
+      target_fps: 0 
+      jpeg_quality: 85
     # Camera hardware control settings
     camera:
       auto_exposure: True
@@ -30,7 +30,7 @@
       frame_id: "exploreHD_camera_frame" # Unique TF frame_id
 
 # usbpcb camera
-/dwe_camera/usbpcb_camera_node:
+/mini_alpha/usbpcb_camera_node:
   ros__parameters:
     # Video stream settings
     video:
@@ -43,8 +43,8 @@
     compression:
       width: 320
       height: 240
-      target_fps: 0
-      jpeg_quality: 75
+      target_fps: 0 
+      jpeg_quality: 85    
     # Camera hardware control settings
     camera:
       auto_exposure: True
