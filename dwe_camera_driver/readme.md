@@ -22,8 +22,10 @@
 This package now uses OpenCV's V4L2 backend to capture JPEG streams directly, removing the need for GStreamer.
 
 - All Ubuntu / Debian-based systems (including Raspberry Pi):
-    
+
     **Python Packages (pip)**
+    
+    If realtime apriltag detection is desired
     ```bash   
     pip3 install pupil-apriltags
     ```
@@ -37,4 +39,19 @@ This package now uses OpenCV's V4L2 backend to capture JPEG streams directly, re
 - Raspberry Pi also requires:
     ```bash
     sudo apt install libgl1
+    ```
+
+### How to run
+
+- Single camera
+    ```bash
+    ros2 launch dwe_camera_driver camera.launch.py
+    ```
+- Single camera with realtime apriltag detection
+    ```bash
+    ros2 launch dwe_camera_driver apriltag_camera.launch.py
+    ```
+- Dual camera
+    ```bash
+    ros2 launch dwe_camera_driver multi_camera.launch.py
     ```
