@@ -22,7 +22,7 @@ def generate_launch_description():
         package='dwe_camera_driver',
         executable='camera_node',
         name='camera_node',
-        namespace="mini_alpha", # This matches the key in the YAML file
+        namespace="dwe_camera", # This matches the key in the YAML file
         output='screen',
         parameters=[param_config_path]
     )

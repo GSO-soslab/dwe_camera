@@ -1,6 +1,6 @@
 # Parameters for a single camera_node instance.
 # The top-level key matches the full node name: /{namespace}/{node_name}
-/mini_alpha/camera_node:
+/dwe_camera/camera_node:
   ros__parameters:
     # Video stream settings
     video:

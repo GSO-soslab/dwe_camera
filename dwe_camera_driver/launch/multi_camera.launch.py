@@ -16,7 +16,7 @@ def generate_launch_description():
         package='dwe_camera_driver',
         executable='camera_node',
         name='exploreHD_camera_node',
-        namespace='dwe_camera',
+        namespace='mini_alpha',
         output='screen',
         parameters=[dual_camera_params_path],
         remappings=[
@@ -30,7 +30,7 @@ def generate_launch_description():
         package='dwe_camera_driver',
         executable='camera_node',
         name='usbpcb_camera_node',
-        namespace='dwe_camera',
+        namespace='mini_alpha',
         output='screen',
         parameters=[dual_camera_params_path],
         remappings=[
