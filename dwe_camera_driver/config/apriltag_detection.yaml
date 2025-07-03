@@ -6,7 +6,7 @@
     apriltag:
       enable: True        # Set to True to enable AprilTag detection
       family: 'tag25h9'   # The family of tags to detect (e.g., 'tag36h11', 'tag25h9', 'tag16h5')
-      size: 0.156          # The size of the tag's black square in meters
+      size: 0.21          # The size of the tag's black square in meters
       publish_rate: 1     # Rate (Hz) to publish the detection image topic
 
       # --- Tunable parameters for the pupil-apriltags detector ---

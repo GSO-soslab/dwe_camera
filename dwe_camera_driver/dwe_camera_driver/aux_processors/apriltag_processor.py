@@ -123,14 +123,16 @@ class AprilTagDetector:
                 cv2.polylines(image, [corners], isClosed=True, color=(0, 255, 0), thickness=2)
                 cv2.drawFrameAxes(image, self.camera_intrinsics_mtx, self.distCoeffs, rvec, tvec, self.tag_size * 0.5)
 
-                pose_str = f"({tvec[0]:.2f}, {tvec[1]:.2f}, {tvec[2]:.2f}, {roll:.0f}, {pitch:.0f}, {yaw:.0f})"
+                pose_t_str = f"xyz: ({tvec[0]:.2f}, {tvec[1]:.2f}, {tvec[2]:.2f})"
+                pose_r_str = f"rpy: ({roll:.0f}, {pitch:.0f}, {yaw:.0f})"
                 id_str = f"ID: {tag.tag_id}"
-
-                text_anchor = tuple(corners[0])
-                cv2.putText(image, id_str, (text_anchor[0], text_anchor[1] - 40),
-                            cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 255, 255), 2)
-                cv2.putText(image, pose_str, (text_anchor[0], text_anchor[1] - 15),
-                            cv2.FONT_HERSHEY_SIMPLEX, 1.2, (0, 255, 255), 2)
+                text_anchor = [tag.center[0].astype(int), tag.center[1].astype(int)]
+                cv2.putText(image, id_str, (text_anchor[0] - 125, text_anchor[1] + 20),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 0, 255), 2)
+                cv2.putText(image, pose_t_str, (text_anchor[0] - 125, text_anchor[1] - 55),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.85, (0, 255, 255), 2)
+                cv2.putText(image, pose_r_str, (text_anchor[0] - 125, text_anchor[1] - 25),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.85, (255, 255, 0), 2)
 
             except (ValueError, cv2.error) as e:
                 # --- DRAW FAILED DETECTION ---
