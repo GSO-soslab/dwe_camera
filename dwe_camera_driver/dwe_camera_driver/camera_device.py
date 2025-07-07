@@ -47,6 +47,11 @@ class CameraDevice:
         self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
         self.cap.set(cv2.CAP_PROP_FPS, framerate)
 
+        # Set a larger buffer size. This might help prevent dropped/incomplete frames
+        # on resource-constrained systems like Raspberry Pi. The default is often 1.
+        if not self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 10):
+            self.logger.warn("Failed to set camera buffer size. This may not be supported by the backend.")
+
         # ** THE IMPORTANT PART **
         # Disable automatic conversion from JPEG to BGR
         # This makes `read()` return the raw JPEG data
