@@ -168,30 +168,6 @@ class CameraDevice:
                     supported_controls['exposure_time'] = False
             return supported_controls
 
-    # def read_jpeg(self):
-    #     """
-    #     Reads a frame from the camera. Since CAP_PROP_CONVERT_RGB is false,
-    #     this should return the raw JPEG data.
-    #     """
-    #     with self.lock:
-    #         if not self.is_opened(): return None
-    #         ret, frame = self.cap.read()
-    #         if not ret:
-    #             self.logger.warn("Failed to read frame from camera.")
-    #             return None
-            
-    #         # When CAP_PROP_CONVERT_RGB is 0 and format is MJPG, OpenCV returns
-    #         # the raw JPEG data as a 2D numpy array. The shape can vary between
-    #         # backends/drivers (e.g., (N, 1) or (1, N)).
-    #         # We check if it's a 2D array and then convert to bytes, which is robust.
-    #         if frame is not None and frame.ndim == 2:
-    #             return frame.tobytes()
-    #         else:
-    #             self.logger.error("Read frame but it was not in the expected raw JPEG format. "
-    #                                 f"Shape: {frame.shape if frame is not None else 'None'}, "
-    #                                 f"Dtype: {frame.dtype if frame is not None else 'None'}")
-    #             return None
-
     def read_jpeg(self):
         """
         Reads a frame from the camera using a grab/retrieve pattern for robustness,

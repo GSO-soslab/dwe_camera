@@ -7,6 +7,7 @@ import numpy as np
 import traceback
 import threading
 import copy
+import time # Added for sleep calls
 
 from std_msgs.msg import Header
 from sensor_msgs.msg import CompressedImage
@@ -25,15 +26,14 @@ class CameraNode(Node):
     It conditionally loads and manages auxiliary processors for features like
     low-bandwidth streams, raw image publishing, and AprilTag detection based on
     the provided ROS parameters.
+    The capture logic runs in a dedicated thread to ensure self-pacing, which is
+    critical for performance on resource-constrained devices like Raspberry Pi.
     """
     def __init__(self):
         super().__init__('camera_node')
 
-        # Use separate callback groups to ensure different timers (e.g., capture vs. settings)
-        # do not block each other, and parameter services remain responsive.
-        self.image_capture_cb_group = MutuallyExclusiveCallbackGroup()
+        # Use separate callback groups for timers and services to ensure responsiveness.
         self.cam_setting_cb_group = MutuallyExclusiveCallbackGroup()
-        # Callback groups for auxiliary processors will be created if they are enabled.
         self.compression_cb_group = MutuallyExclusiveCallbackGroup()
         self.raw_image_cb_group = MutuallyExclusiveCallbackGroup()
         self.apriltag_cb_group = MutuallyExclusiveCallbackGroup()
@@ -47,8 +47,11 @@ class CameraNode(Node):
         self.supported_controls = {}
         
         self.camera_device = None
-        self.main_capture_timer = None
         self.cam_settings_timer = None
+        
+        # Dedicated thread for image capture to ensure self-pacing
+        self.capture_thread = None
+        self.shutdown_event = threading.Event()
 
         # --- Auxiliary Processors (initialized to None) ---
         self.low_bw_compressor = None
@@ -70,14 +73,14 @@ class CameraNode(Node):
             self.setup_parameters()
             self.setup_camera_device()
             self.setup_core_ros_publishers()
-            self.setup_auxiliary_processors() # This is the new modular setup
+            self.setup_auxiliary_processors()
             self.publish_initial_settings()
             self.set_unsupported_params_to_readonly()
             
             # Register parameter callback AFTER all parameters are finalized
             self.add_on_set_parameters_callback(self.parameters_callback)
             
-            self.setup_timers()
+            self.setup_timers_and_thread() # New combined setup
             self.get_logger().info("Camera node successfully initialized.")
             
         except Exception as e:
@@ -170,20 +173,21 @@ class CameraNode(Node):
                 except Exception as e:
                     self.get_logger().error(f"Failed to set unsupported parameter '{param_full_name}' to read-only: {e}")
 
-    def setup_timers(self):
-        """Sets up the main timers for the node."""
-        self.get_logger().info("Setting up core timers...")
-        # Main timer for capturing images from the camera
-        if self.CAM_FPS > 0:
-            self.main_capture_timer = self.create_timer(
-                1.0 / self.CAM_FPS, 
-                self.raw_image_capture_callback,
-                callback_group=self.image_capture_cb_group)
-        else:
-            self.get_logger().warn("Camera FPS is 0. Main capture timer will not be started.")
+    def setup_timers_and_thread(self):
+        """Sets up the capture thread and the periodic settings timer."""
+        self.get_logger().info("Setting up timers and capture thread...")
 
         # Timer for periodically publishing camera settings
         self.cam_settings_timer = self.create_timer(1.0, self.periodic_settings_callback, callback_group=self.cam_setting_cb_group)
+
+        # Start the main capture thread for self-paced image processing
+        if self.camera_device and self.camera_device.is_opened():
+            self.get_logger().info("Starting main capture thread.")
+            self.shutdown_event.clear()
+            self.capture_thread = threading.Thread(target=self._capture_loop, daemon=True)
+            self.capture_thread.start()
+        else:
+            self.get_logger().error("Camera device not available. Cannot start capture thread.")
 
     def parameters_callback(self, params):
         """Applies changed ROS parameters to the camera hardware."""
@@ -200,59 +204,81 @@ class CameraNode(Node):
         
         return SetParametersResult(successful=True)
     
-    def raw_image_capture_callback(self):
+    def _capture_loop(self):
         """
-        The main capture loop. Reads a raw JPEG from the camera, publishes it,
-        and then decodes it ONCE if any auxiliary processors need the raw frame.
-        The decoded frame is then passed to the active processors.
+        The main capture loop, running in its own thread.
+        This loop is "self-pacing," timed by the camera's hardware itself. It
+        relies on the blocking `read_jpeg()` call, which waits for a new frame.
+        This is more robust than a software timer (like `rclpy.Timer`), as it
+        avoids clock drift and ensures every frame is processed as soon as it's
+        available without constantly polling and wasting CPU.
         """
-        if not (self.camera_device and self.camera_device.is_opened()):
-            return
+        self.get_logger().info("Capture thread started.")
         
-        frame_id = self.get_parameter('ros.frame_id').value
-        header = Header(stamp=self.get_clock().now().to_msg(), frame_id=frame_id)
-        
-        # 1. Read the raw, hardware-encoded JPEG data from the camera
-        jpeg_data = self.camera_device.read_jpeg()
-        
-        if not jpeg_data:
-            return
+        # On read failure, we sleep for one frame's duration before retrying.
+        failure_sleep_duration = 1.0 / self.CAM_FPS if self.CAM_FPS > 0 else 0.05
 
-        # 2. Check if settings were changed and need to be re-published
-        is_pending = False
-        with self.settings_lock:
-            if self.pending_settings_publication:
-                is_pending = True
-                self.pending_settings_publication = False
-        if is_pending:
-            self.update_and_publish_settings(header_to_use=header)
+        while not self.shutdown_event.is_set():
+            if not (self.camera_device and self.camera_device.is_opened()):
+                self.get_logger().warn("Camera device not open, sleeping for 1s before retry.", throttle_duration_sec=10)
+                time.sleep(1.0)
+                continue
 
-        # 3. Publish the main compressed image topic
-        compressed_msg = CompressedImage(header=header, format="jpeg", data=jpeg_data)
-        self.image_pub.publish(compressed_msg)
-        
-        # 4. Check if any auxiliary processors need the decoded frame
-        needs_decode = self.low_bw_compressor or self.apriltag_processor or self.raw_image_publisher
-        
-        if needs_decode:
-            decoded_frame = None
             try:
-                # Decode the JPEG into a CV2 image matrix (BGR)
-                decoded_frame = cv2.imdecode(np.frombuffer(jpeg_data, np.uint8), cv2.IMREAD_COLOR)
-            except cv2.error:
-                self.get_logger().warn("Failed to decode JPEG frame. Skipping auxiliary processing.", throttle_duration_sec=5)
-                return
+                # 1. Read the raw, hardware-encoded JPEG data. This call blocks until a
+                #    frame is available, naturally timing the loop to the camera's FPS.
+                jpeg_data = self.camera_device.read_jpeg()
+                
+                if not jpeg_data:
+                    # If read fails, sleep to prevent a tight busy-loop that consumes CPU.
+                    time.sleep(failure_sleep_duration)
+                    continue
 
-            if decoded_frame is None:
-                return
+                header = Header(stamp=self.get_clock().now().to_msg(), frame_id=self.get_parameter('ros.frame_id').value)
 
-            # 5. Pass the single decoded frame to any active processors
-            if self.low_bw_compressor:
-                self.low_bw_compressor.update_frame(decoded_frame)
-            if self.apriltag_processor:
-                self.apriltag_processor.update_frame(decoded_frame)
-            if self.raw_image_publisher:
-                self.raw_image_publisher.update_frame(decoded_frame)
+                # 2. Check if settings were changed and need to be re-published
+                is_pending = False
+                with self.settings_lock:
+                    if self.pending_settings_publication:
+                        is_pending = True
+                        self.pending_settings_publication = False
+                if is_pending:
+                    self.update_and_publish_settings(header_to_use=header)
+
+                # 3. Publish the main compressed image topic
+                compressed_msg = CompressedImage(header=header, format="jpeg", data=jpeg_data)
+                self.image_pub.publish(compressed_msg)
+                
+                # 4. Check if any auxiliary processors need the decoded frame
+                needs_decode = self.low_bw_compressor or self.apriltag_processor or self.raw_image_publisher
+                
+                if needs_decode:
+                    decoded_frame = None
+                    try:
+                        # Decode the JPEG into a CV2 image matrix (BGR)
+                        decoded_frame = cv2.imdecode(np.frombuffer(jpeg_data, np.uint8), cv2.IMREAD_COLOR)
+                    except cv2.error as e:
+                        self.get_logger().warn(f"Failed to decode JPEG frame: {e}. Skipping auxiliary processing.", throttle_duration_sec=5)
+                        continue
+
+                    if decoded_frame is None:
+                        self.get_logger().warn("Decoded frame is None, possibly due to corruption. Skipping auxiliary processing.", throttle_duration_sec=5)
+                        continue
+
+                    # 5. Pass the single decoded frame to any active processors
+                    if self.low_bw_compressor:
+                        self.low_bw_compressor.update_frame(decoded_frame)
+                    if self.apriltag_processor:
+                        self.apriltag_processor.update_frame(decoded_frame)
+                    if self.raw_image_publisher:
+                        self.raw_image_publisher.update_frame(decoded_frame)
+
+            except Exception as e:
+                self.get_logger().error(f"Exception in capture loop: {e}", exc_info=True)
+                # Sleep to avoid spamming logs on repeated errors
+                time.sleep(1.0)
+        
+        self.get_logger().info("Capture thread has been shut down.")
 
     def update_and_publish_settings(self, header_to_use=None):
         """Queries camera for its actual settings, creates a CameraSettings message, publishes it, and caches it."""
@@ -328,7 +354,15 @@ class CameraNode(Node):
     def cleanup_resources(self):
         """A centralized place to release all resources."""
         self.get_logger().info("Executing resource cleanup...")
-        if self.main_capture_timer: self.main_capture_timer.cancel()
+
+        # Signal the capture thread to stop and wait for it to exit
+        if self.capture_thread and self.capture_thread.is_alive():
+            self.get_logger().info("Shutting down capture thread...")
+            self.shutdown_event.set()
+            self.capture_thread.join(timeout=2.0)
+            if self.capture_thread.is_alive():
+                self.get_logger().warn("Capture thread did not exit cleanly.")
+        
         if self.cam_settings_timer: self.cam_settings_timer.cancel()
         
         if self.low_bw_compressor: self.low_bw_compressor.shutdown()
