@@ -28,7 +28,7 @@
 
     # Video stream settings
     video:
-      id: 2
+      id: 0
       width: 1600
       height: 1200
       framerate: 15
