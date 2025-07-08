@@ -6,7 +6,7 @@ from cv_bridge import CvBridge, CvBridgeError
 
 from std_msgs.msg import Header
 from sensor_msgs.msg import Image, CompressedImage
-from rclpy.parameter import ParameterDescriptor
+from rcl_interfaces.msg import ParameterDescriptor
 
 class LowBandwidthCompressor:
     """

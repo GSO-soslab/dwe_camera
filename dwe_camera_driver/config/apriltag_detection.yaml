@@ -28,9 +28,9 @@
 
     # Video stream settings
     video:
-      id: 0
-      width: 1920
-      height: 1080
+      id: 2
+      width: 1600
+      height: 1200
       framerate: 15
       format: 'MJPG' 
       img_raw: False
@@ -55,15 +55,27 @@
       sharpness: 3
       # --- Camera Intrinsics (REQUIRED for pose estimation) ---
       # These values must be calibrated for your specific camera.
+      # # dwe explorerhd air
+      # intrinsics:
+      #   fx: 956.137817
+      #   fy: 959.569259
+      #   cx: 976.928226
+      #   cy: 572.032605
+      # # Distortion coefficients: [k1, k2, p1, p2, k3]. Ensure you have 5 values.
+      # # NOTE: The pupil-apriltags library does not use these for pose estimation.
+      # # For best results, use a camera calibration that provides an undistorted image.
+      # distortion: [-0.297061, 0.057794, -0.000599, 0.000735, 0.0]
+      
+      # dwe stellarhd air
       intrinsics:
-        fx: 956.137817
-        fy: 959.569259
-        cx: 976.928226
-        cy: 572.032605
+        fx: 951.722897
+        fy: 951.107298
+        cx: 818.958217
+        cy: 672.296108
       # Distortion coefficients: [k1, k2, p1, p2, k3]. Ensure you have 5 values.
       # NOTE: The pupil-apriltags library does not use these for pose estimation.
       # For best results, use a camera calibration that provides an undistorted image.
-      distortion: [-0.297061, 0.057794, -0.000599, 0.000735, 0.0]
+      distortion: [-0.319352, 0.077184, -0.001019, -0.000084, 0.000000]
 
     # ROS-specific settings
     ros:

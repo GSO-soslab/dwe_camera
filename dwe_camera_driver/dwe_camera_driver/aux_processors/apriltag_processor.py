@@ -191,13 +191,38 @@ class AprilTagProcessor:
             'decode_sharpening': self._node.get_parameter('apriltag.detector.decode_sharpening').value,
         }
 
+
+        self.cameramtx = np.array([
+            [camera_intrinsics['fx'], 0, camera_intrinsics['cx']],
+            [0, camera_intrinsics['fy'], camera_intrinsics['cy']],
+            [0, 0, 1]
+        ], dtype=np.float32)
+        self.distCoeffs = np.array(camera_distortion, dtype=np.float32)
+
+        # Calculate rectification and cropping parameters for full-res images
+        self.newcameramtx, self.roi = cv2.getOptimalNewCameraMatrix(
+            self.cameramtx, self.distCoeffs, (image_size['img_width'], image_size['img_height']), 1, (image_size['img_width'], image_size['img_height']))
+        self.new_distCoeffs = np.zeros(5, dtype=np.float32)
+        self.crop_x, self.crop_y, self.crop_w, self.crop_h = self.roi
+
+        new_camera_intrinsics = {
+            'fx': self.newcameramtx[0,0],
+            'fy': self.newcameramtx[1,1],
+            'cx': self.newcameramtx[0,2],
+            'cy': self.newcameramtx[1,2]
+        }
+        new_image_size = {
+            'img_width': self.crop_w,
+            'img_height': self.crop_h,
+        }
+
         # Initialize the actual AprilTag detector logic
         self._detector = AprilTagDetector(
             family=tag_family,
             tag_size=tag_size,
-            camera_intrinsics=camera_intrinsics,
-            camera_distortion=camera_distortion,
-            image_size=image_size,
+            camera_intrinsics=new_camera_intrinsics,
+            camera_distortion=self.new_distCoeffs,
+            image_size=new_image_size,
             logger=self._logger,
             detector_params=detector_params
         )
@@ -219,6 +244,13 @@ class AprilTagProcessor:
         """Receives a new, decoded frame from the main capture loop."""
         with self._frame_lock:
             self._latest_frame = frame
+    
+    def _rectify_image(self, cv2_img):
+        """Removes lens distortion and crops to the valid pixel area."""
+        rect_img = cv2.undistort(cv2_img, self.cameramtx, self.distCoeffs, None, self.newcameramtx)
+        return rect_img[
+            self.crop_y : self.crop_y + self.crop_h,
+            self.crop_x : self.crop_x + self.crop_w]
 
     def _timer_callback(self):
         """Periodically runs detection and publishes the result."""
@@ -228,6 +260,7 @@ class AprilTagProcessor:
             frame_to_process = self._latest_frame.copy()
 
         # Perform detection and get the annotated image
+        frame_to_process = self._rectify_image(frame_to_process)
         annotated_image = self._detector.detect_and_draw(frame_to_process)
         
         if annotated_image is not None:
