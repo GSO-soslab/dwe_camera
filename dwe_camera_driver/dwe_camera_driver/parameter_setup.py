@@ -19,7 +19,11 @@ def get_camera_control_descriptors():
         'gain': ParameterDescriptor(description='Image gain [0, 100]', integer_range=[IntegerRange(from_value=0, to_value=100, step=1)]),
         'sharpness': ParameterDescriptor(description='Image sharpness [0, 6]', integer_range=[IntegerRange(from_value=0, to_value=6, step=1)]),
         'exposure_time': ParameterDescriptor(description='Exposure time [1, 5000]. Used when auto_exposure is False.', integer_range=[IntegerRange(from_value=1, to_value=5000, step=1)]),
-        'auto_exposure': ParameterDescriptor(description='Enable/disable auto exposure')
+        'auto_exposure': ParameterDescriptor(description='Enable/disable auto exposure'),
+        'white_balance_automatic': ParameterDescriptor(description='Enable/disable auto white balance'),
+        'white_balance_temperature': ParameterDescriptor(description='White balance temperature [2800, 6500]. Used when auto is False.', integer_range=[IntegerRange(from_value=2800, to_value=6500, step=1)]),
+        'power_line_frequency': ParameterDescriptor(description='Power line frequency filtering (0:Disabled, 1:50Hz, 2:60Hz)', integer_range=[IntegerRange(from_value=0, to_value=2, step=1)]),
+        'backlight_compensation': ParameterDescriptor(description='Backlight compensation [0, 20]', integer_range=[IntegerRange(from_value=0, to_value=20, step=1)])
     }
 
 def declare_camera_parameters(node: Node):
@@ -85,3 +89,7 @@ def declare_camera_parameters(node: Node):
     node.declare_parameter('camera.sharpness', 3, control_descriptors['sharpness'])
     node.declare_parameter('camera.auto_exposure', True, control_descriptors['auto_exposure'])
     node.declare_parameter('camera.exposure_time', 156, control_descriptors['exposure_time'])
+    node.declare_parameter('camera.white_balance_automatic', True, control_descriptors['white_balance_automatic'])
+    node.declare_parameter('camera.white_balance_temperature', 4600, control_descriptors['white_balance_temperature'])
+    node.declare_parameter('camera.power_line_frequency', 2, control_descriptors['power_line_frequency'])
+    node.declare_parameter('camera.backlight_compensation', 5, control_descriptors['backlight_compensation'])

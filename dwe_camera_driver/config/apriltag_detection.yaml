@@ -42,17 +42,29 @@
       target_fps: 0 
       jpeg_quality: 90
 
-    # Camera hardware control settings
+    # Camera hardware control settings for a raw, unprocessed image
     camera:
-      auto_exposure: True   # True for auto, False for manual
-      exposure_time: 156    # Absolute exposure time (used if auto_exposure is False)
-      brightness: 0
-      contrast: 32
-      saturation: 64
-      hue: 0
-      gamma: 100
-      gain: 0
-      sharpness: 3
+      # --- Exposure Controls (Manual) ---
+      auto_exposure: False                # MUST be False for manual control.
+      exposure_time: 156                  # TUNE THIS VALUE: Manually set for correct brightness.
+      gain: 0                             # Minimum digital gain to reduce noise.
+
+      # --- White Balance Controls (Manual) ---
+      white_balance_automatic: False      # MUST be False for manual control.
+      white_balance_temperature: 4600     # TUNE THIS VALUE: Manually set for correct color.
+
+      # --- Enhancement & Compensation Filters (Disabled/Minimal) ---
+      sharpness: 0                        # Minimum sharpness (disables edge enhancement).
+      backlight_compensation: 0           # Minimum (disabled).
+      power_line_frequency: 0             # Disabled. May cause flicker under AC lights.
+      
+      # --- Color & Tone Controls (Neutral/Default) ---
+      brightness: 0                       # Neutral brightness.
+      contrast: 32                        # Lower contrast for a "flatter" image.
+      saturation: 64                      # Neutral color saturation.
+      hue: 0                              # Neutral hue.
+      gamma: 100                          # Default gamma curve.
+
       # --- Camera Intrinsics (REQUIRED for pose estimation) ---
       # These values must be calibrated for your specific camera.
       # # dwe explorerhd air

@@ -3,6 +3,15 @@ import numpy as np
 import time
 import threading
 
+# Compatibility for older OpenCV versions.
+# cv2.CAP_PROP_POWERLINE_FREQUENCY was introduced in OpenCV 4.1.0.
+# The corresponding raw integer value for the V4L2 backend is 39.
+try:
+    _power_line_frequency_prop = cv2.CAP_PROP_POWERLINE_FREQUENCY
+except AttributeError:
+    _power_line_frequency_prop = 39
+
+
 class CameraDevice:
     """
     A class to interface with a V4L2 camera using OpenCV's VideoCapture
@@ -22,7 +31,11 @@ class CameraDevice:
         'gain': cv2.CAP_PROP_GAIN,
         'sharpness': cv2.CAP_PROP_SHARPNESS,
         'auto_exposure': cv2.CAP_PROP_AUTO_EXPOSURE,
-        'exposure_absolute': cv2.CAP_PROP_EXPOSURE
+        'exposure_absolute': cv2.CAP_PROP_EXPOSURE,
+        'backlight_compensation': cv2.CAP_PROP_BACKLIGHT,
+        'white_balance_temperature': cv2.CAP_PROP_WB_TEMPERATURE,
+        'white_balance_automatic': cv2.CAP_PROP_AUTO_WB,
+        'power_line_frequency': _power_line_frequency_prop
     }
 
     def __init__(self, device_id, width, height, framerate, logger, initial_controls=None):
@@ -125,6 +138,8 @@ class CameraDevice:
                             current_controls['auto_exposure'] = int(value)
                         elif name == 'exposure_absolute':
                             current_controls['exposure_time'] = int(value)
+                        elif name == 'white_balance_automatic':
+                            current_controls['white_balance_automatic'] = int(value)
                         else:
                             current_controls[name] = int(value)
                     # If unsupported (value < 0 or None), we do nothing, leaving the default of 0.
@@ -166,6 +181,12 @@ class CameraDevice:
                 if 'exposure_time' in supported_controls:
                     self.logger.info("Auto-exposure control not supported; disabling manual exposure time parameter as well.")
                     supported_controls['exposure_time'] = False
+
+            # Special case: white_balance_temperature is only meaningful if auto_white_balance can be turned off.
+            if not supported_controls.get('white_balance_automatic', False):
+                if 'white_balance_temperature' in supported_controls:
+                    self.logger.info("Auto white balance control not supported; disabling manual white balance temperature parameter as well.")
+                    supported_controls['white_balance_temperature'] = False
             return supported_controls
 
     def read_jpeg(self):

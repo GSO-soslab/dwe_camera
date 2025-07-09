@@ -26,6 +26,10 @@
       gamma: 100
       gain: 0
       sharpness: 3
+      white_balance_automatic: True
+      white_balance_temperature: 4600
+      power_line_frequency: 2
+      backlight_compensation: 5
     ros:
       frame_id: "exploreHD_camera_frame" # Unique TF frame_id
 
@@ -56,5 +60,9 @@
       gamma: 100
       gain: 0
       sharpness: 3
+      white_balance_automatic: True
+      white_balance_temperature: 4600
+      power_line_frequency: 2
+      backlight_compensation: 5
     ros:
       frame_id: "usbpcb_camera_frame" # Unique TF frame_id

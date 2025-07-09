@@ -61,7 +61,8 @@ class CameraNode(Node):
         # List of camera control parameter names for easier management.
         self.camera_control_params = [
             'brightness', 'contrast', 'saturation', 'hue', 'gamma', 'gain', 'sharpness',
-            'auto_exposure', 'exposure_time'
+            'auto_exposure', 'exposure_time', 'white_balance_automatic', 'white_balance_temperature',
+            'power_line_frequency', 'backlight_compensation'
         ]
         
         # V4L2 standard values for auto exposure control
@@ -304,6 +305,10 @@ class CameraNode(Node):
         settings_msg.gamma = current_controls.get('gamma', 0)
         settings_msg.gain = current_controls.get('gain', 0)
         settings_msg.sharpness = current_controls.get('sharpness', 0)
+        settings_msg.white_balance_automatic = bool(current_controls.get('white_balance_automatic', 0))
+        settings_msg.white_balance_temperature = current_controls.get('white_balance_temperature', 0)
+        settings_msg.power_line_frequency = current_controls.get('power_line_frequency', 0)
+        settings_msg.backlight_compensation = current_controls.get('backlight_compensation', 0)
         settings_msg.video_format = self.get_parameter('video.format').value
         
         self.cam_settings_pub.publish(settings_msg)
@@ -345,9 +350,14 @@ class CameraNode(Node):
                 controls_to_set[name] = value
         
         # If auto exposure is on, the manual exposure setting should not be sent.
-        if current_values['auto_exposure']:
+        if current_values.get('auto_exposure', False):
             if 'exposure_absolute' in controls_to_set:
                 del controls_to_set['exposure_absolute']
+
+        # If auto white balance is on, the manual temperature setting should not be sent.
+        if current_values.get('white_balance_automatic', False):
+            if 'white_balance_temperature' in controls_to_set:
+                del controls_to_set['white_balance_temperature']
 
         return controls_to_set
 
