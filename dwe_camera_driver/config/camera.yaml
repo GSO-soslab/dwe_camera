@@ -16,6 +16,7 @@
       framerate: 15
       format: 'MJPG'
       img_raw: False
+      img_calibrated: True
 
     # Settings for the low-bandwidth compressed stream (0 target_fps will disable this topic)
     compression:
@@ -30,23 +31,30 @@
       auto_exposure: True                # MUST be False for manual control.
       exposure_time: 156                  # TUNE THIS VALUE: Manually set for correct brightness.
       gain: 0                             # Minimum digital gain to reduce noise.
-
       # --- White Balance Controls (Manual) ---
       white_balance_automatic: True      # MUST be False for manual control.
       white_balance_temperature: 4600     # TUNE THIS VALUE: Manually set for correct color.
-
       # --- Enhancement & Compensation Filters (Disabled/Minimal) ---
       sharpness: 0                        # Minimum sharpness (disables edge enhancement).
       backlight_compensation: 0           # Minimum (disabled).
       power_line_frequency: 0             # Disabled. May cause flicker under AC lights.
-      
       # --- Color & Tone Controls (Neutral/Default) ---
       brightness: 0                       # Neutral brightness.
       contrast: 32                        # Lower contrast for a "flatter" image.
       saturation: 64                      # Neutral color saturation.
       hue: 0                              # Neutral hue.
       gamma: 100                          # Default gamma curve.
-
+      # dwe stellarhd air
+      intrinsics:
+        fx: 951.722897
+        fy: 951.107298
+        cx: 818.958217
+        cy: 672.296108
+      # Distortion coefficients: [k1, k2, p1, p2, k3]. Ensure you have 5 values.
+      # NOTE: The pupil-apriltags library does not use these for pose estimation.
+      # For best results, use a camera calibration that provides an undistorted image.
+      distortion: [-0.319352, 0.077184, -0.001019, -0.000084, 0.000000]
+      
     # ROS-specific settings
     ros:
       frame_id: "dwe_camera_frame"

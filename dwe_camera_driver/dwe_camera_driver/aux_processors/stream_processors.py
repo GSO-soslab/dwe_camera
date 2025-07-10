@@ -139,3 +139,95 @@ class RawImagePublisher:
         """Cancels the timer to cleanly shut down the processor."""
         self._logger.info("Shutting down.")
         if self._timer: self._timer.cancel()
+
+class CalibratedImagePublisher:
+    """
+    Publish a retified image
+    """
+    def __init__(self, parent_node: rclpy.node.Node, publish_rate: float, callback_group):
+        """
+        Initializes the raw image publisher.
+        
+        :param parent_node: The main camera node.
+        :param publish_rate: The rate (Hz) at which to publish raw images.
+        :param callback_group: The ROS 2 callback group for the timer.
+        """
+        self._node = parent_node
+        self._logger = self._node.get_logger().get_child('calibrated_image_publisher')
+        
+        self._frame_lock = threading.Lock()
+        self._latest_frame = None
+        self._frame_id = self._node.get_parameter('ros.frame_id').value
+
+        self.publish_rate = publish_rate
+        self._jpeg_quality = int(self._node.get_parameter('compression.jpeg_quality').value)
+
+        camera_intrinsics = {
+            'fx': self._node.get_parameter('camera.intrinsics.fx').value,
+            'fy': self._node.get_parameter('camera.intrinsics.fy').value,
+            'cx': self._node.get_parameter('camera.intrinsics.cx').value,
+            'cy': self._node.get_parameter('camera.intrinsics.cy').value
+        }
+        camera_distortion = self._node.get_parameter('camera.distortion').value
+        image_size = {
+            'img_width': self._node.get_parameter('video.width').value,
+            'img_height': self._node.get_parameter('video.height').value
+        }
+
+        self.cameramtx = np.array([
+            [camera_intrinsics['fx'], 0, camera_intrinsics['cx']],
+            [0, camera_intrinsics['fy'], camera_intrinsics['cy']],
+            [0, 0, 1]
+        ], dtype=np.float32)
+        self.distCoeffs = np.array(camera_distortion, dtype=np.float32)
+
+        # Calculate rectification and cropping parameters for frame
+        self.newcameramtx, self.roi = cv2.getOptimalNewCameraMatrix(
+            self.cameramtx, self.distCoeffs, (image_size['img_width'], image_size['img_height']), 1, (image_size['img_width'], image_size['img_height']))
+        self.new_distCoeffs = np.zeros(5, dtype=np.float32)
+        self.crop_x, self.crop_y, self.crop_w, self.crop_h = self.roi
+
+        # Create ROS publisher and timer
+        self._publisher = self._node.create_publisher(CompressedImage, "image_calibrated/compressed", 10)
+        self._timer = self._node.create_timer(
+            1.0 / self.publish_rate,
+            self._timer_callback,
+            callback_group=callback_group
+        )
+        self._logger.info(f"Initialized. Publishing Calibrated Image at {self.publish_rate} FPS with resolution {self.crop_w}x{self.crop_h} and quality {self._jpeg_quality}.")
+
+    def update_frame(self, frame: np.ndarray):
+        """Receives a new, decoded frame from the main capture loop."""
+        with self._frame_lock:
+            self._latest_frame = frame
+    
+    def _rectify_image(self, cv2_img):
+        """Removes lens distortion and crops to the valid pixel area."""
+        rect_img = cv2.undistort(cv2_img, self.cameramtx, self.distCoeffs, None, self.newcameramtx)
+        return rect_img[
+            self.crop_y : self.crop_y + self.crop_h,
+            self.crop_x : self.crop_x + self.crop_w]
+
+    def _timer_callback(self):
+        """Periodically runs detection and publishes the result."""
+        with self._frame_lock:
+            if self._latest_frame is None:
+                return
+            frame_to_process = self._latest_frame.copy()
+
+        # Perform detection and get the annotated image
+        frame_processed = self._rectify_image(frame_to_process)
+        
+        # Compress the annotated image for publishing
+        encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), self._jpeg_quality]
+        result, encimg = cv2.imencode('.jpg', frame_processed, encode_param)
+            
+        if result:
+            header = Header(stamp=self._node.get_clock().now().to_msg(), frame_id=self._frame_id)
+            msg = CompressedImage(header=header, format="jpeg", data=encimg.tobytes())
+            self._publisher.publish(msg)
+
+    def shutdown(self):
+        """Cancels the timer to cleanly shut down the processor."""
+        self._logger.info("Shutting down.")
+        if self._timer: self._timer.cancel()

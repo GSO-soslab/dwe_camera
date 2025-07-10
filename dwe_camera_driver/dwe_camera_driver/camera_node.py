@@ -37,6 +37,7 @@ class CameraNode(Node):
         self.compression_cb_group = MutuallyExclusiveCallbackGroup()
         self.raw_image_cb_group = MutuallyExclusiveCallbackGroup()
         self.apriltag_cb_group = MutuallyExclusiveCallbackGroup()
+        self.calibrated_image_cb_group = MutuallyExclusiveCallbackGroup()
         
         self.get_logger().info("Initializing DWE Camera Node...")
 
@@ -57,6 +58,7 @@ class CameraNode(Node):
         self.low_bw_compressor = None
         self.apriltag_processor = None
         self.raw_image_publisher = None
+        self.calibrated_image_publisher = None
         
         # List of camera control parameter names for easier management.
         self.camera_control_params = [
@@ -147,6 +149,14 @@ class CameraNode(Node):
             self.apriltag_processor = AprilTagProcessor(self, self.apriltag_cb_group)
         else:
             self.get_logger().info("AprilTag detection is disabled (apriltag.enable is false).")
+        
+        # 4. Calibrated Image Publisher
+        if self.get_parameter('video.img_calibrated').value:
+            self.get_logger().info("Enabling calibrated image publisher module.")
+            from .aux_processors.stream_processors import CalibratedImagePublisher
+            self.calibrated_image_publisher = CalibratedImagePublisher(self, self.CAM_FPS, self.calibrated_image_cb_group)
+        else:
+            self.get_logger().info("Raw image stream is disabled (img_raw is false).")
 
     def publish_initial_settings(self):
         """Publishes the initial camera settings after querying the hardware."""
@@ -251,7 +261,7 @@ class CameraNode(Node):
                 self.image_pub.publish(compressed_msg)
                 
                 # 4. Check if any auxiliary processors need the decoded frame
-                needs_decode = self.low_bw_compressor or self.apriltag_processor or self.raw_image_publisher
+                needs_decode = self.low_bw_compressor or self.apriltag_processor or self.raw_image_publisher or self.calibrated_image_publisher
                 
                 if needs_decode:
                     decoded_frame = None
@@ -273,6 +283,8 @@ class CameraNode(Node):
                         self.apriltag_processor.update_frame(decoded_frame)
                     if self.raw_image_publisher:
                         self.raw_image_publisher.update_frame(decoded_frame)
+                    if self.calibrated_image_publisher:
+                        self.calibrated_image_publisher.update_frame(decoded_frame)
 
             except Exception as e:
                 self.get_logger().error(f"Exception in capture loop: {e}", exc_info=True)

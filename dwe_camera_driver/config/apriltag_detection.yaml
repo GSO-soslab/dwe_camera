@@ -29,11 +29,12 @@
     # Video stream settings
     video:
       id: 0
-      width: 1600
-      height: 1200
+      width: 1920
+      height: 1080
       framerate: 15
       format: 'MJPG' 
       img_raw: False
+      img_calibrated: False
 
     # Settings for the low-bandwidth compressed stream (0 target_fps will disable this topic)
     compression:
@@ -48,23 +49,19 @@
       auto_exposure: False                # MUST be False for manual control.
       exposure_time: 156                  # TUNE THIS VALUE: Manually set for correct brightness.
       gain: 0                             # Minimum digital gain to reduce noise.
-
       # --- White Balance Controls (Manual) ---
       white_balance_automatic: False      # MUST be False for manual control.
       white_balance_temperature: 4600     # TUNE THIS VALUE: Manually set for correct color.
-
       # --- Enhancement & Compensation Filters (Disabled/Minimal) ---
       sharpness: 0                        # Minimum sharpness (disables edge enhancement).
       backlight_compensation: 0           # Minimum (disabled).
       power_line_frequency: 0             # Disabled. May cause flicker under AC lights.
-      
       # --- Color & Tone Controls (Neutral/Default) ---
       brightness: 0                       # Neutral brightness.
       contrast: 32                        # Lower contrast for a "flatter" image.
       saturation: 64                      # Neutral color saturation.
       hue: 0                              # Neutral hue.
       gamma: 100                          # Default gamma curve.
-
       # --- Camera Intrinsics (REQUIRED for pose estimation) ---
       # These values must be calibrated for your specific camera.
       # # dwe explorerhd air
@@ -77,7 +74,6 @@
       # # NOTE: The pupil-apriltags library does not use these for pose estimation.
       # # For best results, use a camera calibration that provides an undistorted image.
       # distortion: [-0.297061, 0.057794, -0.000599, 0.000735, 0.0]
-      
       # dwe stellarhd air
       intrinsics:
         fx: 951.722897
