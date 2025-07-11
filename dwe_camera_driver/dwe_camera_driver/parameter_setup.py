@@ -68,6 +68,8 @@ def declare_camera_parameters(node: Node):
     node.declare_parameter('camera.intrinsics.cx', 960.0, ParameterDescriptor(read_only=True))
     node.declare_parameter('camera.intrinsics.cy', 540.0, ParameterDescriptor(read_only=True))
     node.declare_parameter('camera.distortion', [0.0, 0.0, 0.0, 0.0, 0.0], ParameterDescriptor(read_only=True))
+    node.declare_parameter('camera.fisheye', False, ParameterDescriptor(description='Set to true if using a fisheye camera model for undistortion.', read_only=True))
+    node.declare_parameter('camera.undistort_crop', False, ParameterDescriptor(description='Crop the undistorted image to valid pixels (applies to both models).', read_only=True))
 
     # Core node parameters
     node.declare_parameter('ros.frame_id', 'dwe_camera_frame', frame_id_descriptor)

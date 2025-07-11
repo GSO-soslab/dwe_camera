@@ -50,10 +50,14 @@
         fy: 951.107298
         cx: 818.958217
         cy: 672.296108
-      # Distortion coefficients: [k1, k2, p1, p2, k3]. Ensure you have 5 values.
-      # NOTE: The pupil-apriltags library does not use these for pose estimation.
-      # For best results, use a camera calibration that provides an undistorted image.
+      # Distortion coefficients. Standard model: [k1, k2, p1, p2, k3...]. Fisheye model: [k1, k2, k3, k4].
+      # Ensure the coefficients match the model selected by the 'fisheye' flag below.
       distortion: [-0.319352, 0.077184, -0.001019, -0.000084, 0.000000]
+      # Set to true to use the fisheye model for undistortion, false for standard (plumb bob) model.
+      fisheye: false
+      # Set to true to crop the undistorted image to show only valid pixels (removes black borders).
+      # This applies to both standard and fisheye models.
+      undistort_crop: False
     ros:
       frame_id: "exploreHD_camera_frame" # Unique TF frame_id
 
@@ -107,10 +111,14 @@
         fy: 951.107298
         cx: 818.958217
         cy: 672.296108
-      # Distortion coefficients: [k1, k2, p1, p2, k3]. Ensure you have 5 values.
-      # NOTE: The pupil-apriltags library does not use these for pose estimation.
-      # For best results, use a camera calibration that provides an undistorted image.
+      # Distortion coefficients. Standard model: [k1, k2, p1, p2, k3...]. Fisheye model: [k1, k2, k3, k4].
+      # Ensure the coefficients match the model selected by the 'fisheye' flag below.
       distortion: [-0.319352, 0.077184, -0.001019, -0.000084, 0.000000]
+      # Set to true to use the fisheye model for undistortion, false for standard (plumb bob) model.
+      fisheye: false
+      # Set to true to crop the undistorted image to show only valid pixels (removes black borders).
+      # This applies to both standard and fisheye models.
+      undistort_crop: False
       
     ros:
       frame_id: "usbpcb_camera_frame" # Unique TF frame_id

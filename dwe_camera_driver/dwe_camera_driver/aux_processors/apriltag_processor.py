@@ -9,6 +9,8 @@ from sensor_msgs.msg import CompressedImage
 from scipy.spatial.transform import Rotation as R
 from pupil_apriltags import Detector
 
+from dwe_camera_driver.image_processing import ImageRectifier
+
 class AprilTagDetector:
     """
     A class to detect AprilTags in an image using the pupil-apriltags library,
@@ -39,12 +41,7 @@ class AprilTagDetector:
         
         # NOTE: pupil-apriltags does not use distortion coefficients for its internal pose estimation.
         # The user should provide an undistorted image if pose accuracy is critical.
-        # We will log a warning if distortion coefficients are present.
-        if any(d != 0 for d in camera_distortion):
-            self.logger.warn("pupil-apriltags library does not use distortion coefficients for pose estimation. "
-                             "For accurate results, provide an undistorted image stream. "
-                             "The provided distortion coefficients will be ignored by the detector, but used for drawing axes.")
-
+        # The provided coefficients are only used for drawing the axes, so we build the matrix here.
         self.distCoeffs = np.array(camera_distortion, dtype=np.float32)
         self.camera_intrinsics_mtx = np.array([
             [self.camera_params[0], 0, self.camera_params[2]],
@@ -62,6 +59,8 @@ class AprilTagDetector:
                 **detector_params # Pass YAML parameters directly
             )
             self.logger.info(f"pupil-apriltags detector created for family '{family}' with params: {detector_params}")
+            self.logger.info(f"Detector configured for image size {self.img_width}x{self.img_height} and camera params: {self.camera_params}")
+
         except Exception as e:
             self.logger.error(f"Failed to create pupil-apriltags detector: {e}")
             self.detector = None
@@ -172,6 +171,7 @@ class AprilTagProcessor:
         tag_size = self._node.get_parameter('apriltag.size').value
         self._jpeg_quality = int(self._node.get_parameter('compression.jpeg_quality').value)
         
+        # Get original camera parameters for rectification
         camera_intrinsics = {
             'fx': self._node.get_parameter('camera.intrinsics.fx').value,
             'fy': self._node.get_parameter('camera.intrinsics.fy').value,
@@ -179,10 +179,12 @@ class AprilTagProcessor:
             'cy': self._node.get_parameter('camera.intrinsics.cy').value
         }
         camera_distortion = self._node.get_parameter('camera.distortion').value
-        image_size = {
-            'img_width': self._node.get_parameter('video.width').value,
-            'img_height': self._node.get_parameter('video.height').value
-        }
+        is_fisheye = self._node.get_parameter('camera.fisheye').value
+        crop_image = self._node.get_parameter('camera.undistort_crop').value
+        image_size_tuple = (
+            self._node.get_parameter('video.width').value,
+            self._node.get_parameter('video.height').value
+        )
         detector_params = {
             'nthreads': self._node.get_parameter('apriltag.detector.nthreads').value,
             'quad_decimate': self._node.get_parameter('apriltag.detector.quad_decimate').value,
@@ -191,37 +193,34 @@ class AprilTagProcessor:
             'decode_sharpening': self._node.get_parameter('apriltag.detector.decode_sharpening').value,
         }
 
-
-        self.cameramtx = np.array([
+        camera_matrix = np.array([
             [camera_intrinsics['fx'], 0, camera_intrinsics['cx']],
             [0, camera_intrinsics['fy'], camera_intrinsics['cy']],
             [0, 0, 1]
         ], dtype=np.float32)
-        self.distCoeffs = np.array(camera_distortion, dtype=np.float32)
+        dist_coeffs = np.array(camera_distortion, dtype=np.float32)
 
-        # Calculate rectification and cropping parameters for full-res images
-        self.newcameramtx, self.roi = cv2.getOptimalNewCameraMatrix(
-            self.cameramtx, self.distCoeffs, (image_size['img_width'], image_size['img_height']), 1, (image_size['img_width'], image_size['img_height']))
-        self.new_distCoeffs = np.zeros(5, dtype=np.float32)
-        self.crop_x, self.crop_y, self.crop_w, self.crop_h = self.roi
+        # Initialize the centralized image rectifier
+        self._rectifier = ImageRectifier(
+            logger=self._logger,
+            camera_matrix=camera_matrix,
+            dist_coeffs=dist_coeffs,
+            image_size=image_size_tuple,
+            is_fisheye=is_fisheye,
+            crop_to_valid_pixels=crop_image
+        )
 
-        new_camera_intrinsics = {
-            'fx': self.newcameramtx[0,0],
-            'fy': self.newcameramtx[1,1],
-            'cx': self.newcameramtx[0,2],
-            'cy': self.newcameramtx[1,2]
-        }
-        new_image_size = {
-            'img_width': self.crop_w,
-            'img_height': self.crop_h,
-        }
+        # Get the new, correct parameters for the rectified image from the rectifier
+        new_camera_intrinsics = self._rectifier.get_new_camera_params()
+        new_distortion_coeffs = self._rectifier.get_new_distortion_coeffs().tolist()
+        new_image_size = self._rectifier.get_new_image_size()
 
-        # Initialize the actual AprilTag detector logic
+        # Initialize the actual AprilTag detector logic with the rectified parameters
         self._detector = AprilTagDetector(
             family=tag_family,
             tag_size=tag_size,
             camera_intrinsics=new_camera_intrinsics,
-            camera_distortion=self.new_distCoeffs,
+            camera_distortion=new_distortion_coeffs,
             image_size=new_image_size,
             logger=self._logger,
             detector_params=detector_params
@@ -244,13 +243,6 @@ class AprilTagProcessor:
         """Receives a new, decoded frame from the main capture loop."""
         with self._frame_lock:
             self._latest_frame = frame
-    
-    def _rectify_image(self, cv2_img):
-        """Removes lens distortion and crops to the valid pixel area."""
-        rect_img = cv2.undistort(cv2_img, self.cameramtx, self.distCoeffs, None, self.newcameramtx)
-        return rect_img[
-            self.crop_y : self.crop_y + self.crop_h,
-            self.crop_x : self.crop_x + self.crop_w]
 
     def _timer_callback(self):
         """Periodically runs detection and publishes the result."""
@@ -259,9 +251,11 @@ class AprilTagProcessor:
                 return
             frame_to_process = self._latest_frame.copy()
 
-        # Perform detection and get the annotated image
-        frame_to_process = self._rectify_image(frame_to_process)
-        annotated_image = self._detector.detect_and_draw(frame_to_process)
+        # Rectify the image using the centralized rectifier
+        rectified_image = self._rectifier.rectify(frame_to_process)
+        
+        # Perform detection on the rectified image and get the annotated image
+        annotated_image = self._detector.detect_and_draw(rectified_image)
         
         if annotated_image is not None:
             # Compress the annotated image for publishing

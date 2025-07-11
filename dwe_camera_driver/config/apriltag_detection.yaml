@@ -5,9 +5,11 @@
     # Apriltag Parameters:
     apriltag:
       enable: True        # Set to True to enable AprilTag detection
-      family: 'tag25h9'   # The family of tags to detect (e.g., 'tag36h11', 'tag25h9', 'tag16h5')
-      size: 0.21          # The size of the tag's black square in meters
-      publish_rate: 1     # Rate (Hz) to publish the detection image topic
+      # family: 'tag25h9'   # The family of tags to detect (e.g., 'tag36h11', 'tag25h9', 'tag16h5')
+      # size: 0.21          # The size of the tag's black square in meters
+      family: 'tag36h11'   # The family of tags to detect (e.g., 'tag36h11', 'tag25h9', 'tag16h5')
+      size: 0.125          # The size of the tag's black square in meters
+      publish_rate: 2     # Rate (Hz) to publish the detection image topic
 
       # --- Tunable parameters for the pupil-apriltags detector ---
       # These parameters are now read-only after startup. To change them,
@@ -28,9 +30,9 @@
 
     # Video stream settings
     video:
-      id: 0
-      width: 1920
-      height: 1080
+      id: 2
+      width: 1600
+      height: 1200
       framerate: 15
       format: 'MJPG'
       
@@ -51,11 +53,11 @@
     # Camera hardware control settings for a raw, unprocessed image
     camera:
       # --- Exposure Controls (Manual) ---
-      auto_exposure: False                # MUST be False for manual control.
+      auto_exposure: True                # MUST be False for manual control.
       exposure_time: 156                  # TUNE THIS VALUE: Manually set for correct brightness.
       gain: 0                             # Minimum digital gain to reduce noise.
       # --- White Balance Controls (Manual) ---
-      white_balance_automatic: False      # MUST be False for manual control.
+      white_balance_automatic: True      # MUST be False for manual control.
       white_balance_temperature: 4600     # TUNE THIS VALUE: Manually set for correct color.
       # --- Enhancement & Compensation Filters (Disabled/Minimal) ---
       sharpness: 0                        # Minimum sharpness (disables edge enhancement).
@@ -69,26 +71,20 @@
       gamma: 100                          # Default gamma curve.
       # --- Camera Intrinsics (REQUIRED for pose estimation) ---
       # These values must be calibrated for your specific camera.
-      # # dwe explorerhd air
-      # intrinsics:
-      #   fx: 956.137817
-      #   fy: 959.569259
-      #   cx: 976.928226
-      #   cy: 572.032605
-      # # Distortion coefficients: [k1, k2, p1, p2, k3]. Ensure you have 5 values.
-      # # NOTE: The pupil-apriltags library does not use these for pose estimation.
-      # # For best results, use a camera calibration that provides an undistorted image.
-      # distortion: [-0.297061, 0.057794, -0.000599, 0.000735, 0.0]
       # dwe stellarhd air
       intrinsics:
-        fx: 951.722897
-        fy: 951.107298
-        cx: 818.958217
-        cy: 672.296108
-      # Distortion coefficients: [k1, k2, p1, p2, k3]. Ensure you have 5 values.
-      # NOTE: The pupil-apriltags library does not use these for pose estimation.
-      # For best results, use a camera calibration that provides an undistorted image.
-      distortion: [-0.319352, 0.077184, -0.001019, -0.000084, 0.000000]
+        fx: 953.919689
+        fy: 954.022011
+        cx: 818.210277
+        cy: 665.849871
+      # Distortion coefficients. Standard model: [k1, k2, p1, p2, k3...]. Fisheye model: [k1, k2, k3, k4].
+      # Ensure the coefficients match the model selected by the 'fisheye' flag below.
+      distortion: [-0.064599, -0.002388, 0.001767, 0.000415]
+      # Set to true to use the fisheye model for undistortion, false for standard (plumb bob) model.
+      fisheye: True
+      # Set to true to crop the undistorted image to show only valid pixels (removes black borders).
+      # This applies to both standard and fisheye models.
+      undistort_crop: True
 
     # ROS-specific settings
     ros:
