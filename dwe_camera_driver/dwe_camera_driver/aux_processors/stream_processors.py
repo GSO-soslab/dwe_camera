@@ -89,7 +89,7 @@ class RawImagePublisher:
     An auxiliary processor that publishes the raw, uncompressed video stream.
     It operates on its own timer and is only active if enabled.
     """
-    def __init__(self, parent_node: rclpy.node.Node, publish_rate: float, callback_group):
+    def __init__(self, parent_node: rclpy.node.Node, mono: bool, publish_rate: float, callback_group):
         """
         Initializes the raw image publisher.
         
@@ -104,6 +104,8 @@ class RawImagePublisher:
         self._frame_lock = threading.Lock()
         self._latest_frame = None
         self._frame_id = self._node.get_parameter('ros.frame_id').value
+
+        self.mono = mono
 
         # Create ROS publisher and timer
         self._publisher = self._node.create_publisher(Image, "image_raw", 10)
@@ -125,10 +127,13 @@ class RawImagePublisher:
             if self._latest_frame is None:
                 return
             frame_copy = self._latest_frame.copy()
-            
         try:
             # Convert the OpenCV image to a ROS Image message
-            msg = self._bridge.cv2_to_imgmsg(frame_copy, encoding='bgr8')
+            if self.mono:
+                gray_image = cv2.cvtColor(frame_copy, cv2.COLOR_BGR2GRAY)
+                msg = self._bridge.cv2_to_imgmsg(gray_image, encoding='mono8')
+            else:
+                msg = self._bridge.cv2_to_imgmsg(frame_copy, encoding='bgr8')
             msg.header.stamp = self._node.get_clock().now().to_msg()
             msg.header.frame_id = self._frame_id
             self._publisher.publish(msg)

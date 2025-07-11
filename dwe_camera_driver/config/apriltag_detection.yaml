@@ -32,8 +32,13 @@
       width: 1920
       height: 1080
       framerate: 15
-      format: 'MJPG' 
+      format: 'MJPG'
+      
+    # Aux processs
+    aux_process:
       img_raw: False
+      img_raw_mono: False
+      img_raw_framerate: 1
       img_calibrated: False
 
     # Settings for the low-bandwidth compressed stream (0 target_fps will disable this topic)

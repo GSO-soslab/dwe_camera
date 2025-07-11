@@ -135,10 +135,12 @@ class CameraNode(Node):
             self.get_logger().info("Low-bandwidth stream is disabled (target_fps is 0).")
 
         # 2. Raw Image Publisher
-        if self.get_parameter('video.img_raw').value:
+        if self.get_parameter('aux_process.img_raw').value:
             self.get_logger().info("Enabling raw image publisher module.")
+            raw_img_mono = self.get_parameter('aux_process.img_raw_mono').value
+            raw_img_fps = self.get_parameter('aux_process.img_raw_framerate').value
             from .aux_processors.stream_processors import RawImagePublisher
-            self.raw_image_publisher = RawImagePublisher(self, self.CAM_FPS, self.raw_image_cb_group)
+            self.raw_image_publisher = RawImagePublisher(self, raw_img_mono, raw_img_fps, self.raw_image_cb_group)
         else:
             self.get_logger().info("Raw image stream is disabled (img_raw is false).")
             
@@ -151,7 +153,7 @@ class CameraNode(Node):
             self.get_logger().info("AprilTag detection is disabled (apriltag.enable is false).")
         
         # 4. Calibrated Image Publisher
-        if self.get_parameter('video.img_calibrated').value:
+        if self.get_parameter('aux_process.img_calibrated').value:
             self.get_logger().info("Enabling calibrated image publisher module.")
             from .aux_processors.stream_processors import CalibratedImagePublisher
             self.calibrated_image_publisher = CalibratedImagePublisher(self, self.CAM_FPS, self.calibrated_image_cb_group)
