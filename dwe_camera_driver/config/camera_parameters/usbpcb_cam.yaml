@@ -3,6 +3,7 @@
   ros__parameters:
     # Video stream settings
     video:
+      product_name: 'H264'
       width: 640
       height: 360
       framerate: 15

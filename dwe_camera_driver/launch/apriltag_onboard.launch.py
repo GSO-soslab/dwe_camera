@@ -16,8 +16,8 @@ def generate_launch_description():
 
     # Paths to the different parameter files
     hardware_config_path = os.path.join(pkg_share, 'config', 'hardware_controls.yaml')
-    camera_config_path = os.path.join(pkg_share, 'config', 'cameras', 'in_air', 'stella_air.yaml')
-    aux_process_config_path = os.path.join(pkg_share, 'config', 'aux_processes.yaml')
+    camera_config_path = os.path.join(pkg_share, 'config', 'camera_parameters', 'stella_cam.yaml')
+    aux_process_config_path = os.path.join(pkg_share, 'config', 'auxiliary_processors.yaml')
 
     # Define the Node action.
     camera_node = Node(
@@ -31,7 +31,6 @@ def generate_launch_description():
             camera_config_path,
             aux_process_config_path,
             # You can add overrides here, for example:
-            {'video.id': 0},
             {'apriltag.enable': True}
         ],
         remappings=[

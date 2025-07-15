@@ -35,7 +35,8 @@ def declare_camera_parameters(node: Node):
 
     # Descriptors for read-only video properties
     frame_id_descriptor = ParameterDescriptor(description='The TF frame ID for the camera images. Read-only after startup.', read_only=True)
-    video_id_descriptor = ParameterDescriptor(description='Camera device ID (e.g., /dev/videoX). Read-only after startup.', read_only=True)
+    video_id_descriptor = ParameterDescriptor(description='Camera device ID (e.g., /dev/videoX). Used if product_name search fails or is empty. Read-only after startup.', read_only=True)
+    video_product_name_descriptor = ParameterDescriptor(description='Partial name of the camera to search for (e.g., "exploreHd"). If found, overrides video.id. Read-only after startup.', read_only=True)
     video_width_descriptor = ParameterDescriptor(description='Capture width in pixels. Read-only after startup.', read_only=True)
     video_height_descriptor = ParameterDescriptor(description='Capture height in pixels. Read-only after startup.', read_only=True)
     video_framerate_descriptor = ParameterDescriptor(description='Requested capture framerate (Hz). Read-only after startup.', read_only=True)
@@ -75,6 +76,7 @@ def declare_camera_parameters(node: Node):
     # Core node parameters
     node.declare_parameter('ros.frame_id', 'dwe_camera_frame', frame_id_descriptor)
     node.declare_parameter('video.id', 0, video_id_descriptor)
+    node.declare_parameter('video.product_name', '', video_product_name_descriptor)
     node.declare_parameter('video.width', 1920, video_width_descriptor)
     node.declare_parameter('video.height', 1080, video_height_descriptor)
     node.declare_parameter('video.framerate', 15, video_framerate_descriptor)

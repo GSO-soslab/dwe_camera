@@ -16,8 +16,8 @@ def generate_launch_description():
 
     # Paths to the different parameter files
     hardware_config_path = os.path.join(pkg_share, 'config', 'hardware_controls.yaml')
-    camera_config_path = os.path.join(pkg_share, 'config', 'cameras', 'in_air', 'stella_air.yaml')
-    aux_process_config_path = os.path.join(pkg_share, 'config', 'aux_processes.yaml')
+    camera_config_path = os.path.join(pkg_share, 'config', 'camera_parameters', 'stella_cam.yaml')
+    aux_process_config_path = os.path.join(pkg_share, 'config', 'auxiliary_processors.yaml')
     # Empty application path, only basic image capturing is performed
     # app_config_path = []
 
@@ -32,7 +32,6 @@ def generate_launch_description():
             hardware_config_path,
             camera_config_path,
             aux_process_config_path,
-            {'video.id': 0}
         ]
     )
 

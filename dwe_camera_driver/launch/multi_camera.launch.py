@@ -12,10 +12,10 @@ def generate_launch_description():
 
     # Common hardware settings that can be applied to both cameras
     hardware_config_path = os.path.join(pkg_share, 'config', 'hardware_controls.yaml')
-    aux_process_config_path = os.path.join(pkg_share, 'config', 'aux_processes.yaml')
+    aux_process_config_path = os.path.join(pkg_share, 'config', 'auxiliary_processors.yaml')
 
     # --- explore Camera Node Configuration ---
-    explore_config_path = os.path.join(pkg_share, 'config', 'cameras', 'in_air', 'explore_air.yaml')
+    explore_config_path = os.path.join(pkg_share, 'config', 'camera_parameters', 'explore_cam.yaml')
     
     exploreHD_camera_node = Node(
         package='dwe_camera_driver',
@@ -27,7 +27,6 @@ def generate_launch_description():
             hardware_config_path,
             aux_process_config_path,
             explore_config_path,
-            {'video.id': 0}
         ],
         remappings=[
             ('image/compressed', 'explore/image/compressed'),
@@ -37,7 +36,7 @@ def generate_launch_description():
     )
 
     # --- usbpcb Camera Node Configuration ---
-    usbpcb_config_path = os.path.join(pkg_share, 'config', 'cameras', 'in_air', 'usbpcb_air.yaml')
+    usbpcb_config_path = os.path.join(pkg_share, 'config', 'camera_parameters', 'usbpcb_cam.yaml')
     
     usbpcb_camera_node = Node(
         package='dwe_camera_driver',
@@ -49,7 +48,6 @@ def generate_launch_description():
             hardware_config_path,
             aux_process_config_path,
             usbpcb_config_path,
-            {'video.id': 4}
         ],
         remappings=[
             ('image/compressed', 'usbpcb/image/compressed'),

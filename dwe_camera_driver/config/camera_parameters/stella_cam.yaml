@@ -4,6 +4,7 @@
   ros__parameters:
     # Video stream settings
     video:
+      product_name: 'stellarHD'
       width: 1600
       height: 1200
       framerate: 15

@@ -14,9 +14,7 @@ setup(
         ("share/" + package_name, ["package.xml"]),
         (os.path.join('share', package_name, 'launch'), glob(os.path.join('launch', '*launch.[pxy][yma]*'))),
         (os.path.join('share', package_name, 'config'), glob(os.path.join('config', '*.yaml'))),
-        (os.path.join('share', package_name, 'config', 'cameras', 'in_air'), glob(os.path.join('config', 'cameras', 'in_air', '*.yaml'))),
-        # (os.path.join('share', package_name, 'dwe_camera_driver', 'aux_processors'), glob(os.path.join('dwe_camera_driver', 'aux_processors', '*.py')))
-        # (os.path.join('share', package_name, 'config', 'cameras', 'in_water'), glob(os.path.join('config', 'cameras', 'in_water', '*.yaml')))
+        (os.path.join('share', package_name, 'config', 'camera_parameters'), glob(os.path.join('config', 'camera_parameters', '*.yaml'))),
     ],
     install_requires=['setuptools'], 
     zip_safe=True,

@@ -8,6 +8,8 @@ import traceback
 import threading
 import copy
 import time # Added for sleep calls
+import subprocess # For auto-detection
+import re # For auto-detection
 
 from std_msgs.msg import Header
 from sensor_msgs.msg import CompressedImage
@@ -92,6 +94,43 @@ class CameraNode(Node):
             # Re-raise the exception to make the launch system aware of the failure
             raise
 
+    def _find_camera_id_by_name(self, name_substring):
+        """
+        Finds a V4L2 camera device index by searching for a substring in its name.
+        Uses the `v4l2-ctl --list-devices` command.
+        """
+        if not name_substring:
+            return None
+        
+        self.get_logger().info(f"Searching for camera with name containing: '{name_substring}'")
+        try:
+            # Execute the command
+            output = subprocess.check_output(['v4l2-ctl', '--list-devices'], text=True, stderr=subprocess.STDOUT)
+            
+            # The output groups a device name with its /dev/videoX paths.
+            # An empty line separates device entries.
+            devices = output.strip().split('\n\n')
+            
+            for device_info in devices:
+                # Check if the desired name is in this device block
+                if name_substring.lower() in device_info.lower():
+                    # Find the first /dev/videoX path associated with it
+                    match = re.search(r'/dev/video(\d+)', device_info)
+                    if match:
+                        device_id = int(match.group(1))
+                        self.get_logger().info(f"Found camera '{name_substring}' at /dev/video{device_id}")
+                        return device_id
+            
+            self.get_logger().warn(f"Could not find a camera with name containing '{name_substring}'.")
+            return None
+
+        except FileNotFoundError:
+            self.get_logger().error("'v4l2-ctl' command not found. Please install 'v4l-utils'. Cannot search for camera by name.")
+            return None
+        except subprocess.CalledProcessError as e:
+            self.get_logger().error(f"Error executing 'v4l2-ctl --list-devices': {e.output}")
+            return None
+        
     def setup_parameters(self):
         """Delegates parameter declaration to the parameter_setup module."""
         declare_camera_parameters(self)
@@ -99,7 +138,14 @@ class CameraNode(Node):
     def setup_camera_device(self):
         """Initializes the CameraDevice with settings from ROS parameters."""
         self.get_logger().info("Setting up camera device...")
-        cam_id = self.get_parameter('video.id').value
+        # --- Camera Device Discovery ---
+        product_name = self.get_parameter('video.product_name').value
+        cam_id = None
+        if product_name:
+            cam_id = self._find_camera_id_by_name(product_name)
+        if cam_id is None:
+            cam_id = self.get_parameter('video.id').value
+            self.get_logger().info(f"Using camera ID from 'video.id' parameter: {cam_id}")
         width = self.get_parameter('video.width').value
         height = self.get_parameter('video.height').value
         fps_req = self.get_parameter('video.framerate').value
