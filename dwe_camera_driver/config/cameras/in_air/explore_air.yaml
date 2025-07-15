@@ -12,10 +12,10 @@
     camera:
       # explore air
       intrinsics:
-        fx: 951.722897
-        fy: 951.107298
-        cx: 818.958217
-        cy: 672.296108
+        fx: 317.240966
+        fy: 317.035766
+        cx: 272.986072
+        cy: 224.098703
       distortion: [-0.319352, 0.077184, -0.001019, -0.000084, 0.000000]
-      fisheye: false
+      fisheye: False
       undistort_crop: False

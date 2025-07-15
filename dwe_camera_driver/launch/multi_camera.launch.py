@@ -52,9 +52,9 @@ def generate_launch_description():
             {'video.id': 4}
         ],
         remappings=[
-            ('image/compressed', 'explore/image/compressed'),
-            ('image_lowbw/compressed', 'explore/image_lowbw/compressed'),
-            ('camera_settings', 'explore/camera_settings'),
+            ('image/compressed', 'usbpcb/image/compressed'),
+            ('image_lowbw/compressed', 'usbpcb/image_lowbw/compressed'),
+            ('camera_settings', 'usbpcb/camera_settings'),
         ]
     )
 

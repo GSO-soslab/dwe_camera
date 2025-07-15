@@ -12,10 +12,10 @@
     camera:
       # usbpcb camera
       intrinsics:
-        fx: 951.722897
-        fy: 951.107298
-        cx: 818.958217
-        cy: 672.296108
-      distortion: [-0.319352, 0.077184, -0.001019, -0.000084, 0.000000]
-      fisheye: false
+        fx: 344.442625
+        fy: 344.225921
+        cx: 331.977460
+        cy: 186.828514
+      distortion: [0.012006, -0.002764, 0.000038, 0.001801, 0.000000]
+      fisheye: False
       undistort_crop: False

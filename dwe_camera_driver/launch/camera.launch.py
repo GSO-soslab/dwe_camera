@@ -32,7 +32,7 @@ def generate_launch_description():
             hardware_config_path,
             camera_config_path,
             aux_process_config_path,
-            {'video.id': 2}
+            {'video.id': 0}
         ]
     )
 

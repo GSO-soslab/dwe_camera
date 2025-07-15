@@ -27,10 +27,11 @@ def generate_launch_description():
         parameters=[
             camera_config_path,
             app_config_path,
-            {'video.id': 2}
         ],
         remappings=[
             # Optional remappings can be placed here if needed
+            ('apriltag_detection/compressed', 'apriltag_detection/image/compressed'),
+
         ]
     )
 

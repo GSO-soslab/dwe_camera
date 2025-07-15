@@ -24,7 +24,7 @@
       enable: False
       family: 'tag36h11'
       size: 0.125
-      publish_rate: 5
+      publish_rate: 1
       detector:
         nthreads: 1
         quad_decimate: 2.0
