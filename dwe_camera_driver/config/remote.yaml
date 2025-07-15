@@ -1,0 +1,44 @@
+# Application profile for remote processing.
+# This file is combined with a camera-specific calibration file (e.g., stella_air.yaml)
+# in a launch file. It does NOT use hardware_controls.yaml.
+# Using '/**' to allow composition with other parameter files.
+/**:
+  ros__parameters:
+    # --- Subscription Settings ---
+    # The compressed image topic to subscribe to for processing.
+    subscribe_topic: "/dwe_camera/image/compressed"
+
+    # --- Auxiliary Processing ---
+    # Enable/disable different processing pipelines.
+    aux_process:
+      img_raw: False
+      img_raw_mono: False
+      img_raw_framerate: 5
+      img_calibrated: False
+      img_calibrated_framerate: 15
+
+    # --- AprilTag Detection Settings ---
+    apriltag:
+      enable: True
+      family: 'tag25h9'
+      size: 0.156
+      publish_rate: 5
+      detector:
+        nthreads: 8
+        quad_decimate: 2.0
+        quad_sigma: 0.0
+        refine_edges: True
+        decode_sharpening: 0.25
+
+    # --- General Settings ---
+    # ROS frame_id to use for published topics. Should match the source frame_id.
+    ros:
+      frame_id: "dwe_camera_frame"
+
+    # JPEG quality for any newly compressed topics (e.g., calibrated, apriltag).
+    compression:
+      jpeg_quality: 90
+
+    # NOTE: The remote node gets camera calibration (intrinsics, distortion, etc.)
+    # and video dimensions (width, height) from a separate camera-specific
+    # config file loaded by the launch file (e.g., config/cameras/stella_air.yaml).

@@ -1,0 +1,21 @@
+# Camera-specific calibration and video stream settings for the "usbpcb" model.
+/**:
+  ros__parameters:
+    # Video stream settings
+    video:
+      width: 640
+      height: 360
+      framerate: 15
+      format: 'MJPG'
+      
+    # Camera calibration
+    camera:
+      # usbpcb camera
+      intrinsics:
+        fx: 951.722897
+        fy: 951.107298
+        cx: 818.958217
+        cy: 672.296108
+      distortion: [-0.319352, 0.077184, -0.001019, -0.000084, 0.000000]
+      fisheye: false
+      undistort_crop: False

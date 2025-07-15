@@ -44,6 +44,7 @@ def declare_camera_parameters(node: Node):
     video_raw_mono_descriptor = ParameterDescriptor(description='Enable publishing to the image_raw topic (grayscale). Read-only after startup.', read_only=True)
     video_raw_framerate_descriptor = ParameterDescriptor(description='Image_raw topic publishing rate. Read-only after startup.', read_only=True)
     video_calibrated_descriptor = ParameterDescriptor(description='Enable publishing to the img_calibrated topic. Read-only after startup.', read_only=True)
+    video_calibrated_framerate_descriptor = ParameterDescriptor(description='img_calibrated topic publishing rate. Read-only after startup.', read_only=True)
 
     # Descriptors for compression settings (read-only after startup)
     compression_width_descriptor = ParameterDescriptor(description='Width for the low-bandwidth compressed stream. Read-only after startup.', read_only=True)
@@ -82,6 +83,7 @@ def declare_camera_parameters(node: Node):
     node.declare_parameter('aux_process.img_raw_mono', False, video_raw_mono_descriptor)
     node.declare_parameter('aux_process.img_raw_framerate', 5, video_raw_framerate_descriptor)
     node.declare_parameter('aux_process.img_calibrated', False, video_calibrated_descriptor)
+    node.declare_parameter('aux_process.img_calibrated_framerate', 15, video_calibrated_framerate_descriptor)
     node.declare_parameter('compression.width', 320, compression_width_descriptor)
     node.declare_parameter('compression.height', 240, compression_height_descriptor)
     node.declare_parameter('compression.target_fps', 5, compression_fps_descriptor)

@@ -9,7 +9,7 @@ from sensor_msgs.msg import CompressedImage
 from scipy.spatial.transform import Rotation as R
 from pupil_apriltags import Detector
 
-from dwe_camera_driver.image_processing import ImageRectifier
+from .image_processing import ImageRectifier
 
 class AprilTagDetector:
     """

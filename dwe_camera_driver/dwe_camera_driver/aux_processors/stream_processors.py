@@ -8,7 +8,7 @@ from std_msgs.msg import Header
 from sensor_msgs.msg import Image, CompressedImage, CameraInfo
 from rcl_interfaces.msg import ParameterDescriptor
 
-from dwe_camera_driver.image_processing import ImageRectifier
+from .image_processing import ImageRectifier
 
 class LowBandwidthCompressor:
     """

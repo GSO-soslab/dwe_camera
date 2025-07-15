@@ -156,9 +156,10 @@ class CameraNode(Node):
         if self.get_parameter('aux_process.img_calibrated').value:
             self.get_logger().info("Enabling calibrated image publisher module.")
             from .aux_processors.stream_processors import CalibratedImagePublisher
-            self.calibrated_image_publisher = CalibratedImagePublisher(self, self.CAM_FPS, self.calibrated_image_cb_group)
+            calibrated_publish_rate = self.get_parameter('aux_process.img_calibrated_framerate').value
+            self.calibrated_image_publisher = CalibratedImagePublisher(self, calibrated_publish_rate, self.calibrated_image_cb_group)
         else:
-            self.get_logger().info("Raw image stream is disabled (img_raw is false).")
+            self.get_logger().info("Calibrated image stream is disabled (img_calibrated is false).")
 
     def publish_initial_settings(self):
         """Publishes the initial camera settings after querying the hardware."""

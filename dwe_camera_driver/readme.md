@@ -1,3 +1,4 @@
+// dwe_camera_driver/readme.md
 # dwe_camera_driver/readme.md
 ### Some Useful Commands
 
@@ -54,4 +55,10 @@ This package now uses OpenCV's V4L2 backend to capture JPEG streams directly, re
 - Dual camera
     ```bash
     ros2 launch dwe_camera_driver multi_camera.launch.py
+    ```
+- Remote processing
+    This assumes a `camera_node` is already running and publishing an image topic.
+    On the remote machine, run:
+    ```bash
+    ros2 launch dwe_camera_driver remote.launch.py
     ```

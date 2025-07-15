@@ -1,0 +1,37 @@
+# Application profile for a standard camera stream.
+# This file is combined with a camera-specific file (e.g., stella_air.yaml)
+# and a hardware file (hardware_controls.yaml) in a launch file.
+# Using '/**' to allow composition with other parameter files.
+/**:
+  ros__parameters:         
+    # Configure which auxiliary processing streams to enable.
+    aux_process:
+      img_raw: False
+      img_raw_mono: False
+      img_raw_framerate: 15
+      img_calibrated: False
+      img_calibrated_framerate: 15
+
+    # Settings for the low-bandwidth compressed stream (0 target_fps will disable this topic)
+    compression:
+      width: 320
+      height: 240
+      target_fps: 0 
+      jpeg_quality: 75
+    
+    # Enable AprilTag detection
+    apriltag:
+      enable: False
+      family: 'tag36h11'
+      size: 0.125
+      publish_rate: 5
+      detector:
+        nthreads: 1
+        quad_decimate: 2.0
+        quad_sigma: 0.0
+        refine_edges: True
+        decode_sharpening: 0.25
+
+    # ROS-specific settings
+    ros:
+      frame_id: "dwe_camera_frame"
