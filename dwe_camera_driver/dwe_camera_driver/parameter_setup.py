@@ -55,7 +55,7 @@ def declare_camera_parameters(node: Node):
     # AprilTag related parameters (all read-only after startup)
     node.declare_parameter('apriltag.enable', False, ParameterDescriptor(description='Enable/disable AprilTag detection.', read_only=True))
     node.declare_parameter('apriltag.family', 'tag36h11', ParameterDescriptor(description='AprilTag family to detect.', read_only=True))
-    node.declare_parameter('apriltag.size', 0.16, ParameterDescriptor(description='Size of the AprilTag in meters.', read_only=True))
+    node.declare_parameter('apriltag.size', 0.21, ParameterDescriptor(description='Size of the AprilTag in meters.', read_only=True))
     node.declare_parameter('apriltag.publish_rate', 1, ParameterDescriptor(description='Rate (Hz) for publishing detection images.', read_only=True))
     node.declare_parameter('apriltag.detector.nthreads', 1, ParameterDescriptor(description='Number of threads for detection.', read_only=True))
     node.declare_parameter('apriltag.detector.quad_decimate', 2.0, ParameterDescriptor(description='Quad decimation factor.', read_only=True))
@@ -74,7 +74,7 @@ def declare_camera_parameters(node: Node):
 
     # Core node parameters
     node.declare_parameter('ros.frame_id', 'dwe_camera_frame', frame_id_descriptor)
-    node.declare_parameter('video.id', 2, video_id_descriptor)
+    node.declare_parameter('video.id', 0, video_id_descriptor)
     node.declare_parameter('video.width', 1920, video_width_descriptor)
     node.declare_parameter('video.height', 1080, video_height_descriptor)
     node.declare_parameter('video.framerate', 15, video_framerate_descriptor)

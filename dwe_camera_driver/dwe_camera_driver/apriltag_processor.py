@@ -179,6 +179,7 @@ class AprilTagProcessor:
             'cy': self._node.get_parameter('camera.intrinsics.cy').value
         }
         camera_distortion = self._node.get_parameter('camera.distortion').value
+        
         is_fisheye = self._node.get_parameter('camera.fisheye').value
         crop_image = self._node.get_parameter('camera.undistort_crop').value
         image_size_tuple = (
@@ -199,7 +200,7 @@ class AprilTagProcessor:
             [0, 0, 1]
         ], dtype=np.float32)
         dist_coeffs = np.array(camera_distortion, dtype=np.float32)
-
+        self._logger.info(f'dist_coeffs:{dist_coeffs}')
         # Initialize the centralized image rectifier
         self._rectifier = ImageRectifier(
             logger=self._logger,

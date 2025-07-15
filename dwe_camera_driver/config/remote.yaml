@@ -6,7 +6,7 @@
   ros__parameters:
     # --- Subscription Settings ---
     # The compressed image topic to subscribe to for processing.
-    subscribe_topic: "/dwe_camera/image/compressed"
+    subscribe_topic: "/mini_alpha/exploreHD/image/compressed"
 
     # --- Auxiliary Processing ---
     # Enable/disable different processing pipelines.
@@ -21,10 +21,10 @@
     apriltag:
       enable: True
       family: 'tag25h9'
-      size: 0.156
+      size: 0.21
       publish_rate: 5
       detector:
-        nthreads: 8
+        nthreads: 4
         quad_decimate: 2.0
         quad_sigma: 0.0
         refine_edges: True

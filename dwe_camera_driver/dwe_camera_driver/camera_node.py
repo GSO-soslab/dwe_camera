@@ -129,7 +129,7 @@ class CameraNode(Node):
         # 1. Low-Bandwidth Compressor
         if self.get_parameter('compression.target_fps').value > 0:
             self.get_logger().info("Enabling low-bandwidth compressor module.")
-            from .aux_processors.stream_processors import LowBandwidthCompressor
+            from .stream_processors import LowBandwidthCompressor
             self.low_bw_compressor = LowBandwidthCompressor(self, self.compression_cb_group)
         else:
             self.get_logger().info("Low-bandwidth stream is disabled (target_fps is 0).")
@@ -139,7 +139,7 @@ class CameraNode(Node):
             self.get_logger().info("Enabling raw image publisher module.")
             raw_img_mono = self.get_parameter('aux_process.img_raw_mono').value
             raw_img_fps = self.get_parameter('aux_process.img_raw_framerate').value
-            from .aux_processors.stream_processors import RawImagePublisher
+            from .stream_processors import RawImagePublisher
             self.raw_image_publisher = RawImagePublisher(self, raw_img_mono, raw_img_fps, self.raw_image_cb_group)
         else:
             self.get_logger().info("Raw image stream is disabled (img_raw is false).")
@@ -147,7 +147,7 @@ class CameraNode(Node):
         # 3. AprilTag Processor
         if self.get_parameter('apriltag.enable').value:
             self.get_logger().info("Enabling AprilTag processor module.")
-            from .aux_processors.apriltag_processor import AprilTagProcessor
+            from .apriltag_processor import AprilTagProcessor
             self.apriltag_processor = AprilTagProcessor(self, self.apriltag_cb_group)
         else:
             self.get_logger().info("AprilTag detection is disabled (apriltag.enable is false).")
@@ -155,7 +155,7 @@ class CameraNode(Node):
         # 4. Calibrated Image Publisher
         if self.get_parameter('aux_process.img_calibrated').value:
             self.get_logger().info("Enabling calibrated image publisher module.")
-            from .aux_processors.stream_processors import CalibratedImagePublisher
+            from .stream_processors import CalibratedImagePublisher
             calibrated_publish_rate = self.get_parameter('aux_process.img_calibrated_framerate').value
             self.calibrated_image_publisher = CalibratedImagePublisher(self, calibrated_publish_rate, self.calibrated_image_cb_group)
         else:

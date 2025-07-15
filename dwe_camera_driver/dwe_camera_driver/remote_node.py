@@ -6,6 +6,9 @@ import cv2
 import numpy as np
 import traceback
 
+import sys
+import os
+
 from sensor_msgs.msg import CompressedImage
 from rcl_interfaces.msg import ParameterDescriptor
 
@@ -71,7 +74,7 @@ class RemoteNode(Node):
         # Aux Processing Flags and Rates
         self.declare_parameter('aux_process.img_raw', False, readonly_descriptor)
         self.declare_parameter('aux_process.img_raw_mono', False, readonly_descriptor)
-        self.declare_parameter('aux_process.img_raw_framerate', 5, readonly_descriptor)
+        self.declare_parameter('aux_process.img_raw_framerate', 15, readonly_descriptor)
         self.declare_parameter('aux_process.img_calibrated', False, readonly_descriptor)
         # FIX: Corrected typo 'framrate' to 'framerate'
         self.declare_parameter('aux_process.img_calibrated_framerate', 15, readonly_descriptor)
@@ -79,8 +82,8 @@ class RemoteNode(Node):
         # AprilTag parameters
         self.declare_parameter('apriltag.enable', False, readonly_descriptor)
         self.declare_parameter('apriltag.family', 'tag36h11', readonly_descriptor)
-        self.declare_parameter('apriltag.size', 0.16, readonly_descriptor)
-        self.declare_parameter('apriltag.publish_rate', 2, readonly_descriptor)
+        self.declare_parameter('apriltag.size', 0.21, readonly_descriptor)
+        self.declare_parameter('apriltag.publish_rate', 1, readonly_descriptor)
         self.declare_parameter('apriltag.detector.nthreads', 1, readonly_descriptor)
         self.declare_parameter('apriltag.detector.quad_decimate', 2.0, readonly_descriptor)
         self.declare_parameter('apriltag.detector.quad_sigma', 0.0, readonly_descriptor)
@@ -136,7 +139,7 @@ class RemoteNode(Node):
         # 1. Raw Image Publisher
         if self.enable_img_raw:
             self.get_logger().info("Enabling raw image publisher module.")
-            from .aux_processors.stream_processors import RawImagePublisher
+            from .stream_processors import RawImagePublisher
             self.raw_image_publisher = RawImagePublisher(self, self.enable_img_raw_mono, self.img_raw_framerate, self.raw_image_cb_group)
             
             # Store the processing period in nanoseconds for throttling
@@ -151,7 +154,7 @@ class RemoteNode(Node):
         # 2. AprilTag Processor
         if self.enable_apriltag:
             self.get_logger().info("Enabling AprilTag processor module.")
-            from .aux_processors.apriltag_processor import AprilTagProcessor
+            from .apriltag_processor import AprilTagProcessor
             self.apriltag_processor = AprilTagProcessor(self, self.apriltag_cb_group)
 
             if self.apriltag_rate > 0:
@@ -165,7 +168,7 @@ class RemoteNode(Node):
         # 3. Calibrated Image Publisher
         if self.enable_img_calibrated:
             self.get_logger().info("Enabling calibrated image publisher module.")
-            from .aux_processors.stream_processors import CalibratedImagePublisher
+            from .stream_processors import CalibratedImagePublisher
             self.calibrated_image_publisher = CalibratedImagePublisher(self, self.img_calibrated_framerate, self.calibrated_image_cb_group)
 
             if self.img_calibrated_framerate > 0:
