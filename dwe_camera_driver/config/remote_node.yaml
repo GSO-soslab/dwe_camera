@@ -1,19 +1,15 @@
 # Application profile for remote processing.
-# This file is combined with a camera-specific calibration file (e.g., stella_air.yaml)
-# in a launch file. It does NOT use hardware_controls.yaml.
 # Using '/**' to allow composition with other parameter files.
 /**:
   ros__parameters:
     # --- Subscription Settings ---
     # The compressed image topic to subscribe to for processing.
-    subscribe_topic: "/mini_alpha/exploreHD/image/compressed"
-
+    subscribe_topic: "/dwe_camera/image/compressed"
     # --- Auxiliary Processing ---
     # Enable/disable different processing pipelines.
     aux_process:
       img_raw: False
-      img_raw_mono: False
-      img_raw_framerate: 5
+      img_raw_framerate: 10
       img_calibrated: False
       img_calibrated_framerate: 15
 
@@ -22,7 +18,7 @@
       enable: True
       family: 'tag25h9'
       size: 0.21
-      publish_rate: 5
+      publish_rate: 10
       detector:
         nthreads: 4
         quad_decimate: 2.0

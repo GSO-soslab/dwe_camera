@@ -2,6 +2,7 @@ import rclpy
 import cv2
 import numpy as np
 import threading
+import copy
 from cv_bridge import CvBridge, CvBridgeError
 
 from std_msgs.msg import Header
@@ -12,86 +13,100 @@ from .image_processing import ImageRectifier
 
 class LowBandwidthCompressor:
     """
-    An auxiliary processor that handles the creation of a low-bandwidth,
-    resized, and re-compressed video stream. It operates on its own timer
-    and only runs if enabled in the configuration.
+    An optimized auxiliary processor for creating a low-bandwidth video stream.
+
+    Optimizations:
+    - Avoids race conditions by using a local reference to the frame data.
+    - Prevents re-processing and re-publishing of the same source frame.
+    - Pre-calculates target dimensions and encoding parameters.
+    - Uses a dictionary for cleaner configuration mapping.
     """
-    def __init__(self, parent_node: rclpy.node.Node, callback_group):
-        """
-        Initializes the low-bandwidth compressor.
-        
-        :param parent_node: The main camera node to which this processor is attached.
-        :param callback_group: The ROS 2 callback group for the timer.
-        """
+    def __init__(self, parent_node: rclpy.node.Node, callback_group, qos_profile):
         self._node = parent_node
         self._logger = self._node.get_logger().get_child('low_bandwidth_compressor')
-        
-        # Get compression parameters from the parent node's parameters
-        self._target_fps = self._node.get_parameter('compression.target_fps').value
-        self._jpeg_quality = int(self._node.get_parameter('compression.jpeg_quality').value)
-        
-        # Declare/get compression dimensions. This makes the node robust even if they aren't in all YAML files.
-        try:
-            self._node.declare_parameter('compression.width', 320, ParameterDescriptor(read_only=True))
-            self._node.declare_parameter('compression.height', 240, ParameterDescriptor(read_only=True))
-        except rclpy.exceptions.ParameterAlreadyDeclaredException:
-            pass # Parameters were already declared, which is fine.
-        
-        self._width = self._node.get_parameter('compression.width').value
-        self._height = self._node.get_parameter('compression.height').value
 
-        self._frame_lock = threading.Lock()
-        self._latest_frame = None
+        # Get compression parameters
+        self._target_fps = self._node.get_parameter('compression.target_fps').value
+        self._jpeg_quality = self._node.get_parameter('compression.jpeg_quality').value
+        self._downscale_factor = self._node.get_parameter('compression.downscale').value
         self._frame_id = self._node.get_parameter('ros.frame_id').value
+        source_width = self._node.get_parameter('video.width').value
+        source_height = self._node.get_parameter('video.height').value
+        self._encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), self._jpeg_quality]
         
+        REDUCTION_MAP = {
+            2: cv2.IMREAD_REDUCED_COLOR_2,
+            4: cv2.IMREAD_REDUCED_COLOR_4,
+            8: cv2.IMREAD_REDUCED_COLOR_8,
+        }
+        self._reduction_flag = REDUCTION_MAP.get(self._downscale_factor)
+        if self._reduction_flag is None:
+            self._logger.warn(
+                f"Unsupported downscale_factor '{self._downscale_factor}'. "
+                f"Must be one of {list(REDUCTION_MAP.keys())}. Defaulting to 2."
+            )
+            self._downscale_factor = 2
+            self._reduction_flag = REDUCTION_MAP[self._downscale_factor]
+        self._width = source_width // self._downscale_factor
+        self._height = source_height // self._downscale_factor
+
+        self._last_processed_data = None
+
         # Create ROS publisher and timer
-        self._publisher = self._node.create_publisher(CompressedImage, "image_lowbw/compressed", 10)
+        self._publisher = self._node.create_publisher(CompressedImage, "image_lowbw/compressed", qos_profile=qos_profile)
+        timer_period = 1.0 / self._target_fps
         self._timer = self._node.create_timer(
-            1.0 / self._target_fps,
+            timer_period,
             self._timer_callback,
             callback_group=callback_group
         )
-        self._logger.info(f"Initialized. Publishing at {self._target_fps} FPS with resolution {self._width}x{self._height} and quality {self._jpeg_quality}.")
-
-    def update_frame(self, frame: np.ndarray):
-        """Receives a new, decoded frame from the main capture loop."""
-        with self._frame_lock:
-            self._latest_frame = frame
+        target_size_str = f"{self._width}x{self._height}" if self._width > 0 else "auto"
+        self._logger.info(
+            f"Initialized low bandwidth compressed image. Publishing at <= {self._target_fps} FPS with target resolution "
+            f"{target_size_str} and quality {self._jpeg_quality}."
+        )
 
     def _timer_callback(self):
         """Periodically processes and publishes the latest frame."""
-        with self._frame_lock:
-            if self._latest_frame is None:
-                return
-            frame_copy = self._latest_frame.copy()
+        # Get a local, stable reference to the latest data from the parent.
+        frame_data = self._node.latest_compressed_img_jpg
 
+        # If there's no new data OR if we've already processed this exact frame, do nothing.
+        # The 'is' check is a very fast identity check (memory address).
+        if frame_data is None or frame_data is self._last_processed_data:
+            return
+        # Mark this data as "processed" to prevent reprocessing on the next tick.
+        self._last_processed_data = frame_data
         try:
-            # Resize the image to the target dimensions for the low-bandwidth stream
-            resized_image = cv2.resize(frame_copy, (self._width, self._height), interpolation=cv2.INTER_LINEAR)
-            
-            # Re-encode the resized image as JPEG
-            encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), self._jpeg_quality]
-            result, encimg = cv2.imencode('.jpg', resized_image, encode_param)
-            
+            resized_image = cv2.imdecode(
+                np.frombuffer(frame_data, np.uint8),
+                self._reduction_flag
+            )
+            if resized_image is None:
+                self._logger.warn("Failed to decode/reduce JPEG frame.", throttle_duration_sec=5)
+                return
+            result, encimg = cv2.imencode('.jpg', resized_image, self._encode_param)
             if result:
                 header = Header(stamp=self._node.get_clock().now().to_msg(), frame_id=self._frame_id)
                 msg = CompressedImage(header=header, format="jpeg", data=encimg.tobytes())
                 self._publisher.publish(msg)
         except cv2.error as e:
-            self._logger.error(f"OpenCV error during low-bandwidth compression: {e}")
+            self._logger.warn(f"OpenCV error during frame processing: {e}", throttle_duration_sec=5)
+        except Exception as e:
+            self._logger.error(f"An unexpected error occurred: {e}", throttle_duration_sec=5)
 
     def shutdown(self):
         """Cancels the timer to cleanly shut down the processor."""
         self._logger.info("Shutting down.")
-        if self._timer: self._timer.cancel()
-
+        if self._timer:
+            self._timer.cancel()
 
 class RawImagePublisher:
     """
     An auxiliary processor that publishes the raw, uncompressed video stream.
     It operates on its own timer and is only active if enabled.
     """
-    def __init__(self, parent_node: rclpy.node.Node, mono: bool, publish_rate: float, callback_group):
+    def __init__(self, parent_node: rclpy.node.Node, publish_rate: float, callback_group, qos_profile):
         """
         Initializes the raw image publisher.
         
@@ -102,66 +117,35 @@ class RawImagePublisher:
         self._node = parent_node
         self._logger = self._node.get_logger().get_child('raw_image_publisher')
         self._bridge = CvBridge()
-        
-        self._frame_lock = threading.Lock()
-        self._latest_frame = None
         self._frame_id = self._node.get_parameter('ros.frame_id').value
 
-        self.mono = mono
-
-        # The image size is now determined dynamically from each frame in the callback
-        # to ensure it matches the actual output of the camera hardware.
-
         # Create ROS publisher and timer
-        self._publisher = self._node.create_publisher(Image, "image_raw", 10)
-        self._info_pub = self._node.create_publisher(CameraInfo, 'camera_info', 10)
+        self._publisher = self._node.create_publisher(Image, "image_raw", qos_profile=qos_profile)
+        self._info_pub = self._node.create_publisher(CameraInfo, 'camera_info', qos_profile=qos_profile)
         self._timer = self._node.create_timer(
             1.0 / publish_rate,
             self._timer_callback,
             callback_group=callback_group
         )
         self._logger.info(f"Initialized. Publishing raw images at {publish_rate} Hz.")
-        
-    def update_frame(self, frame: np.ndarray):
-        """Receives a new, decoded frame from the main capture loop."""
-        with self._frame_lock:
-            self._latest_frame = frame
-
+    
     def _timer_callback(self):
         """Periodically converts and publishes the latest frame as a raw Image message."""
-        with self._frame_lock:
-            if self._latest_frame is None:
-                return
-            frame_copy = self._latest_frame.copy()
-        try:
-            time_now = self._node.get_clock().now().to_msg()
-            
-            # Convert the OpenCV image to a ROS Image message
-            if self.mono:
-                gray_image = cv2.cvtColor(frame_copy, cv2.COLOR_BGR2GRAY)
-                msg = self._bridge.cv2_to_imgmsg(gray_image, encoding='mono8')
-            else:
-                msg = self._bridge.cv2_to_imgmsg(frame_copy, encoding='bgr8')
-            
-            msg.header.stamp = time_now
-            msg.header.frame_id = self._frame_id
-
-            # Create and prepare the CameraInfo message
-            info_msg = CameraInfo()
-            # Use the dimensions from the created Image message to ensure they match.
-            # This fixes the bug where CameraInfo reported the requested size
-            # instead of the actual size from the camera hardware.
-            info_msg.width = msg.width
-            info_msg.height = msg.height
-            info_msg.header.stamp = time_now
-            info_msg.header.frame_id = self._frame_id
-            
-            # Publish both the image and its matching info message
-            self._publisher.publish(msg)
-            self._info_pub.publish(info_msg)
-
-        except CvBridgeError as e:
-            self._logger.error(f"Error converting frame to Image message: {e}")
+        if self._node._latest_msg is not None:
+            frame_data = self._node._latest_msg
+            try:
+                header = Header(stamp=self._node.get_clock().now().to_msg(), frame_id=self._frame_id)
+                msg = self._bridge.cv2_to_imgmsg(frame_data, encoding='bgr8')
+                msg.header = header
+                info_msg = CameraInfo()
+                info_msg.width = msg.width
+                info_msg.height = msg.height
+                info_msg.header = header
+                # Publish both the image and its matching info message
+                self._publisher.publish(msg)
+                self._info_pub.publish(info_msg)
+            except CvBridgeError as e:
+                self._logger.error(f"Error converting frame to Image message: {e}")
 
     def shutdown(self):
         """Cancels the timer to cleanly shut down the processor."""
@@ -172,7 +156,7 @@ class CalibratedImagePublisher:
     """
     Publishes a rectified (undistorted) and compressed image stream.
     """
-    def __init__(self, parent_node: rclpy.node.Node, publish_rate: float, callback_group):
+    def __init__(self, parent_node: rclpy.node.Node, publish_rate: float, callback_group, qos_profile):
         """
         Initializes the calibrated image publisher.
         
@@ -181,15 +165,13 @@ class CalibratedImagePublisher:
         :param callback_group: The ROS 2 callback group for the timer.
         """
         self._node = parent_node
+        self._bridge = CvBridge()
         self._logger = self._node.get_logger().get_child('calibrated_image_publisher')
-        
-        self._frame_lock = threading.Lock()
-        self._latest_frame = None
         self._frame_id = self._node.get_parameter('ros.frame_id').value
         self.publish_rate = publish_rate
         self._jpeg_quality = int(self._node.get_parameter('compression.jpeg_quality').value)
 
-        # Get original camera parameters for rectification
+        ##### Camera Parameters #####
         camera_intrinsics = {
             'fx': self._node.get_parameter('camera.intrinsics.fx').value,
             'fy': self._node.get_parameter('camera.intrinsics.fy').value,
@@ -203,7 +185,6 @@ class CalibratedImagePublisher:
             self._node.get_parameter('video.width').value,
             self._node.get_parameter('video.height').value
         )
-
         camera_matrix = np.array([
             [camera_intrinsics['fx'], 0, camera_intrinsics['cx']],
             [0, camera_intrinsics['fy'], camera_intrinsics['cy']],
@@ -226,7 +207,7 @@ class CalibratedImagePublisher:
         new_w, new_h = new_size['img_width'], new_size['img_height']
 
         # Create ROS publisher and timer
-        self._publisher = self._node.create_publisher(CompressedImage, "image_calibrated/compressed", 10)
+        self._publisher = self._node.create_publisher(CompressedImage, "image_calibrated/compressed", qos_profile=qos_profile)
         self._timer = self._node.create_timer(
             1.0 / self.publish_rate,
             self._timer_callback,
@@ -235,29 +216,21 @@ class CalibratedImagePublisher:
         self._logger.info(f"Initialized. Publishing calibrated images at {self.publish_rate} FPS "
                           f"with resolution {new_w}x{new_h} and quality {self._jpeg_quality}.")
 
-    def update_frame(self, frame: np.ndarray):
-        """Receives a new, decoded frame from the main capture loop."""
-        with self._frame_lock:
-            self._latest_frame = frame
-
     def _timer_callback(self):
         """Periodically rectifies and publishes the result."""
-        with self._frame_lock:
-            if self._latest_frame is None:
-                return
-            frame_to_process = self._latest_frame.copy()
+        if self._node._latest_msg is not None:
+            frame_data = self._node._latest_msg
+            try:
+                header = Header(stamp=self._node.get_clock().now().to_msg(), frame_id=self._frame_id)
+                # Rectify the image using the centralized rectifier
+                rectified_image = self._rectifier.rectify(frame_data)
+                # Publish calibrated image as compressed image
+                calibrated_img_msg = self._bridge.cv2_to_compressed_imgmsg(rectified_image)
+                calibrated_img_msg.header = header
 
-        # Rectify the image using the centralized rectifier
-        rectified_image = self._rectifier.rectify(frame_to_process)
-        
-        # Compress the rectified image for publishing
-        encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), self._jpeg_quality]
-        result, encimg = cv2.imencode('.jpg', rectified_image, encode_param)
-            
-        if result:
-            header = Header(stamp=self._node.get_clock().now().to_msg(), frame_id=self._frame_id)
-            msg = CompressedImage(header=header, format="jpeg", data=encimg.tobytes())
-            self._publisher.publish(msg)
+                self._publisher.publish(calibrated_img_msg)
+            except CvBridgeError as e:
+                self._logger.error(f"Error converting frame to Compresseed Image message: {e}")
 
     def shutdown(self):
         """Cancels the timer to cleanly shut down the processor."""

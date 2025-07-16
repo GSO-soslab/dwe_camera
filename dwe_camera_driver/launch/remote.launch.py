@@ -13,7 +13,7 @@ def generate_launch_description():
     pkg_share = get_package_share_directory('dwe_camera_driver')
 
     # Paths to the different parameter files
-    camera_config_path = os.path.join(pkg_share, 'config', 'camera_parameters', 'stella_cam.yaml')
+    camera_config_path = os.path.join(pkg_share, 'config', 'camera_parameters', 'stellar_cam.yaml')
     app_config_path = os.path.join(pkg_share, 'config', 'remote_node.yaml')
 
     # Define the Node action.

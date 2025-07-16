@@ -1,4 +1,4 @@
-# Camera-specific calibration and video stream settings for the "stella_air" model.
+# Camera-specific calibration and video stream settings for the "stellarHD" model.
 # The wildcard '/**' allows these parameters to be applied to any node.
 /**:
   ros__parameters:

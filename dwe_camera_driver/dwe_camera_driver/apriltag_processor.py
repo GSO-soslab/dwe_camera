@@ -1,7 +1,7 @@
 import rclpy
 import cv2
 import numpy as np
-import threading
+from cv_bridge import CvBridge, CvBridgeError
 
 from std_msgs.msg import Header
 from sensor_msgs.msg import CompressedImage
@@ -155,7 +155,7 @@ class AprilTagProcessor:
     An auxiliary processor for detecting AprilTags. It initializes the detector,
     runs detection on its own timer, and publishes the annotated image.
     """
-    def __init__(self, parent_node: rclpy.node.Node, callback_group):
+    def __init__(self, parent_node: rclpy.node.Node, callback_group, qos_profile):
         """
         Initializes the AprilTag processor.
         
@@ -164,7 +164,7 @@ class AprilTagProcessor:
         """
         self._node = parent_node
         self._logger = self._node.get_logger().get_child('apriltag_processor')
-        
+
         # Get AprilTag parameters
         publish_rate = self._node.get_parameter('apriltag.publish_rate').value
         tag_family = self._node.get_parameter('apriltag.family').value
@@ -179,7 +179,6 @@ class AprilTagProcessor:
             'cy': self._node.get_parameter('camera.intrinsics.cy').value
         }
         camera_distortion = self._node.get_parameter('camera.distortion').value
-        
         is_fisheye = self._node.get_parameter('camera.fisheye').value
         crop_image = self._node.get_parameter('camera.undistort_crop').value
         image_size_tuple = (
@@ -193,14 +192,13 @@ class AprilTagProcessor:
             'refine_edges': self._node.get_parameter('apriltag.detector.refine_edges').value,
             'decode_sharpening': self._node.get_parameter('apriltag.detector.decode_sharpening').value,
         }
-
         camera_matrix = np.array([
             [camera_intrinsics['fx'], 0, camera_intrinsics['cx']],
             [0, camera_intrinsics['fy'], camera_intrinsics['cy']],
             [0, 0, 1]
         ], dtype=np.float32)
         dist_coeffs = np.array(camera_distortion, dtype=np.float32)
-        self._logger.info(f'dist_coeffs:{dist_coeffs}')
+
         # Initialize the centralized image rectifier
         self._rectifier = ImageRectifier(
             logger=self._logger,
@@ -210,7 +208,6 @@ class AprilTagProcessor:
             is_fisheye=is_fisheye,
             crop_to_valid_pixels=crop_image
         )
-
         # Get the new, correct parameters for the rectified image from the rectifier
         new_camera_intrinsics = self._rectifier.get_new_camera_params()
         new_distortion_coeffs = self._rectifier.get_new_distortion_coeffs().tolist()
@@ -227,12 +224,10 @@ class AprilTagProcessor:
             detector_params=detector_params
         )
 
-        self._frame_lock = threading.Lock()
-        self._latest_frame = None
+        self._bridge = CvBridge()
         self._frame_id = self._node.get_parameter('ros.frame_id').value
-
         # Create ROS publisher and timer
-        self._publisher = self._node.create_publisher(CompressedImage, "apriltag_detection/compressed", 10)
+        self._publisher = self._node.create_publisher(CompressedImage, "apriltag_detection/compressed", qos_profile=qos_profile)
         self._timer = self._node.create_timer(
             1.0 / publish_rate,
             self._timer_callback,
@@ -240,33 +235,25 @@ class AprilTagProcessor:
         )
         self._logger.info(f"Initialized. Publishing detection results at {publish_rate} Hz.")
 
-    def update_frame(self, frame: np.ndarray):
-        """Receives a new, decoded frame from the main capture loop."""
-        with self._frame_lock:
-            self._latest_frame = frame
-
     def _timer_callback(self):
-        """Periodically runs detection and publishes the result."""
-        with self._frame_lock:
-            if self._latest_frame is None:
-                return
-            frame_to_process = self._latest_frame.copy()
 
-        # Rectify the image using the centralized rectifier
-        rectified_image = self._rectifier.rectify(frame_to_process)
-        
-        # Perform detection on the rectified image and get the annotated image
-        annotated_image = self._detector.detect_and_draw(rectified_image)
-        
-        if annotated_image is not None:
-            # Compress the annotated image for publishing
-            encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), self._jpeg_quality]
-            result, encimg = cv2.imencode('.jpg', annotated_image, encode_param)
-            
-            if result:
+        """Periodically rectifies and publishes the result."""
+        if self._node._latest_msg is not None:
+            frame_data = self._node._latest_msg
+            try:
                 header = Header(stamp=self._node.get_clock().now().to_msg(), frame_id=self._frame_id)
-                msg = CompressedImage(header=header, format="jpeg", data=encimg.tobytes())
-                self._publisher.publish(msg)
+                # Rectify the image using the centralized rectifier
+                rectified_image = self._rectifier.rectify(frame_data)
+                # Perform detection on the rectified image and get the annotated image
+                annotated_image = self._detector.detect_and_draw(rectified_image)
+
+                if annotated_image is not None:
+                    # Publish calibrated image as compressed image
+                    detection_img_msg = self._bridge.cv2_to_compressed_imgmsg(rectified_image)
+                    detection_img_msg.header = header
+                    self._publisher.publish(detection_img_msg)
+            except CvBridgeError as e:
+                self._logger.error(f"Error converting frame to Image message: {e}")
 
     def shutdown(self):
         """Cancels the timer to cleanly shut down the processor."""

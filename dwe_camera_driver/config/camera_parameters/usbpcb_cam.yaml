@@ -1,4 +1,4 @@
-# Camera-specific calibration and video stream settings for the "usbpcb" model.
+# Camera-specific calibration and video stream settings for the "H264" model.
 /**:
   ros__parameters:
     # Video stream settings

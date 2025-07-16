@@ -1,4 +1,4 @@
-# Camera-specific calibration and video stream settings for the "explore_hd" model.
+# Camera-specific calibration and video stream settings for the "exploreHD" model.
 /**:
   ros__parameters:
     # Video stream settings
